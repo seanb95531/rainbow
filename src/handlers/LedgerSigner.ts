@@ -1,7 +1,6 @@
 'use strict';
 
 import AppEth, { ledgerService } from '@ledgerhq/hw-app-eth';
-import TransportBLE from '@ledgerhq/react-native-hw-transport-ble';
 import { SignTypedDataVersion, TypedDataUtils } from '@metamask/eth-sig-util';
 import { Signer } from '@ethersproject/abstract-signer';
 import { Bytes, hexlify, joinSignature } from '@ethersproject/bytes';
@@ -14,6 +13,7 @@ import { logger, RainbowError } from '@/logger';
 import { Navigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import { getAddress } from '@ethersproject/address';
+import { getEthApp } from '@/utils/ledger';
 
 function waiter(duration: number): Promise<void> {
   return new Promise(resolve => {
@@ -40,10 +40,9 @@ export class LedgerSigner extends Signer {
     defineReadOnly(
       this,
       '_eth',
-      TransportBLE.open(deviceId).then(
-        transport => {
-          const eth = new AppEth(transport);
-          return eth;
+      getEthApp(deviceId).then(
+        ethApp => {
+          return ethApp;
         },
         error => {
           return Promise.reject(error);
@@ -57,14 +56,14 @@ export class LedgerSigner extends Signer {
     return new Promise(async (resolve, reject) => {
       if (timeout && timeout > 0) {
         setTimeout(() => {
-          logger.debug('Ledger: Signer timeout', {}, logger.DebugContext.ledger);
+          logger.debug('[LedgerSigner]: Signer timeout', {}, logger.DebugContext.ledger);
           return reject(new RainbowError('Ledger: Signer timeout'));
         }, timeout);
       }
 
       const eth = await this._eth;
       if (!eth) {
-        logger.debug('Ledger: Eth app not open', {}, logger.DebugContext.ledger);
+        logger.debug('[LedgerSigner]: Eth app not open', {}, logger.DebugContext.ledger);
         return reject(new Error('Ledger: Eth app not open'));
       }
 
@@ -74,7 +73,7 @@ export class LedgerSigner extends Signer {
           const result = await callback(eth);
           return resolve(result);
         } catch (error: any) {
-          logger.error(new RainbowError('Ledger: Transport error'), error);
+          logger.error(new RainbowError('[LedgerSigner]: Transport error'), error);
 
           // blind signing isnt enabled
           if (error.name === 'EthAppPleaseEnableContractData')

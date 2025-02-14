@@ -42,7 +42,6 @@ import {
   TextProps,
 } from '@/design-system';
 import { UniqueAsset } from '@/entities';
-import { Network } from '@/helpers';
 import { buildUniqueTokenName } from '@/helpers/assets';
 import { ENS_RECORDS, REGISTRATION_MODES } from '@/helpers/ens';
 import {
@@ -66,6 +65,10 @@ import { buildRainbowUrl } from '@/utils/buildRainbowUrl';
 import isHttpUrl from '@/helpers/isHttpUrl';
 import { useNFTOffers } from '@/resources/reservoir/nftOffersQuery';
 import { convertAmountToNativeDisplay } from '@/helpers/utilities';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useTimeoutEffect } from '@/hooks/useTimeout';
+import { analyticsV2 } from '@/analytics';
+import { getAddressAndChainIdFromUniqueId } from '@/utils/ethereumUtils';
 
 const BackgroundBlur = styled(BlurView).attrs({
   blurAmount: 100,
@@ -211,9 +214,9 @@ interface UniqueTokenExpandedStateProps {
 }
 
 // TODO(RNBW-4552): renable polygon once remote allowlist is updated on web.
-const getIsSupportedOnRainbowWeb = (network: Network) => {
-  switch (network) {
-    case Network.mainnet:
+const getIsSupportedOnRainbowWeb = (chainId: ChainId) => {
+  switch (chainId) {
+    case ChainId.mainnet:
       return true;
     default:
       return false;
@@ -251,7 +254,7 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
     [offer]
   );
 
-  const isSupportedOnRainbowWeb = getIsSupportedOnRainbowWeb(asset.network);
+  const isSupportedOnRainbowWeb = getIsSupportedOnRainbowWeb(asset.chainId);
 
   const [isRefreshMetadataToastActive, setIsRefreshMetadataToastActive] = useState(false);
   const [isReportSpamToastActive, setIsReportSpamToastActive] = useState(false);
@@ -275,7 +278,7 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
   }, [isReportSpamToastActive]);
 
   const {
-    collection: { description: familyDescription, external_url: familyLink, slug },
+    collection: { description: familyDescription, external_url: familyLink, slug } = {},
     description,
     familyImage,
     familyName,
@@ -338,9 +341,10 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
 
   const handleL2DisclaimerPress = useCallback(() => {
     navigate(Routes.EXPLAIN_SHEET, {
-      type: asset.network,
+      type: 'network',
+      chainId: asset.chainId,
     });
-  }, [asset.network, navigate]);
+  }, [asset.chainId, navigate]);
 
   const isHiddenAsset = useMemo(() => hiddenTokens.includes(fullUniqueId) as boolean, [hiddenTokens, fullUniqueId]);
   const isShowcaseAsset = useMemo(() => showcaseTokens.includes(uniqueId) as boolean, [showcaseTokens, uniqueId]);
@@ -413,6 +417,18 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
 
   const hideNftMarketplaceAction = isPoap || !slug;
 
+  useTimeoutEffect(
+    ({ elapsedTime }) => {
+      const { address, chainId } = getAddressAndChainIdFromUniqueId(uniqueId);
+      const { name, description, image_url } = asset;
+      analyticsV2.track(analyticsV2.event.tokenDetailsNFT, {
+        eventSentAfterMs: elapsedTime,
+        token: { isPoap, isParty: !!isParty, isENS, address, chainId, name, image_url },
+        available_data: { description: !!description, image_url: !!image_url, floorPrice: !!offer?.floorPrice },
+      });
+    },
+    { timeout: 5 * 1000 }
+  );
   return (
     <>
       {ios && (
@@ -548,10 +564,10 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
                         />
                       )}
                     </Stack>
-                    {asset.network !== Network.mainnet ? (
+                    {asset.chainId !== ChainId.mainnet ? (
                       // @ts-expect-error JavaScript component
                       <L2Disclaimer
-                        network={asset.network}
+                        chainId={asset.chainId}
                         colors={colors}
                         hideDivider
                         isNft
@@ -559,7 +575,6 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
                         marginHorizontal={0}
                         onPress={handleL2DisclaimerPress}
                         symbol="NFT"
-                        forceDarkMode
                       />
                     ) : null}
                     <Stack separator={<Separator color="divider20 (Deprecated)" />} space={sectionSpace}>
@@ -594,7 +609,7 @@ const UniqueTokenExpandedState = ({ asset: passedAsset, external }: UniqueTokenE
                                 {...asset}
                                 color={imageColor}
                                 hideNftMarketplaceAction={hideNftMarketplaceAction}
-                                slug={slug}
+                                slug={slug ?? ''}
                               />
                             </Section>
                           ) : null}

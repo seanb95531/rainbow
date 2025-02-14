@@ -35,7 +35,7 @@ export type Account = {
   totalTokens: number;
 };
 
-export const enum ReviewPromptAction {
+export enum ReviewPromptAction {
   UserPrompt = 'UserPrompt', // this is a special action that we use if the user manually prompts for review
   TimesLaunchedSinceInstall = 'TimesLaunchedSinceInstall',
   SuccessfulFiatToCryptoPurchase = 'SuccessfulFiatToCryptoPurchase',
@@ -80,4 +80,8 @@ export type Campaigns = CampaignKeys & CampaignMetadata;
 
 export type Cards = {
   [cardKey: string]: boolean;
+};
+
+export type WatchedWalletCohort = {
+  lastReported: ReturnType<typeof Date.now>;
 };

@@ -1,6 +1,6 @@
+import { ChainId } from '@/state/backendNetworks/types';
 import { getGlobal, saveGlobal } from './common';
 import { NativeCurrencyKeys } from '@/entities';
-import networkTypes from '@/helpers/networkTypes';
 import { Language } from '@/languages';
 
 export const IMAGE_METADATA = 'imageMetadata';
@@ -8,13 +8,12 @@ const KEYBOARD_HEIGHT = 'keyboardHeight';
 const APP_ICON = 'appIcon';
 const LANGUAGE = 'language';
 const NATIVE_CURRENCY = 'nativeCurrency';
-const NETWORK = 'network';
+const CHAIN_ID = 'chainId';
 const KEYCHAIN_INTEGRITY_STATE = 'keychainIntegrityState';
 const AUTH_TIMELOCK = 'authTimelock';
 const PIN_AUTH_ATTEMPTS_LEFT = 'pinAuthAttemptsLeft';
 const TRANSACTION_SIGNATURES = 'transactionSignatures';
 const TESTNETS_ENABLED = 'testnetsEnabled';
-const FLASHBOTS_ENABLED = 'flashbotsEnabled';
 
 export const getKeychainIntegrityState = () => getGlobal(KEYCHAIN_INTEGRITY_STATE, null);
 
@@ -32,9 +31,9 @@ export const getLanguage = () => getGlobal(LANGUAGE, Language.EN_US);
 
 export const saveLanguage = (language: any) => saveGlobal(LANGUAGE, language);
 
-export const getNetwork = () => getGlobal(NETWORK, networkTypes.mainnet);
+export const getChainId = () => getGlobal(CHAIN_ID, ChainId.mainnet);
 
-export const saveNetwork = (network: any) => saveGlobal(NETWORK, network);
+export const saveChainId = (chainId: ChainId) => saveGlobal(CHAIN_ID, chainId);
 
 export const getKeyboardHeight = () => getGlobal(KEYBOARD_HEIGHT, null);
 
@@ -72,19 +71,6 @@ export const getTestnetsEnabled = () => getGlobal(TESTNETS_ENABLED, false);
  */
 export const saveTestnetsEnabled = (preference: boolean) => {
   saveGlobal(TESTNETS_ENABLED, preference);
-};
-
-/**
- * @desc get flashbots preference
- */
-export const getFlashbotsEnabled = () => getGlobal(FLASHBOTS_ENABLED, false);
-
-/**
- * @desc save flashbots preference
- * @param  {Boolean}  [value]
- */
-export const saveFlashbotsEnabled = (preference: boolean) => {
-  saveGlobal(FLASHBOTS_ENABLED, preference);
 };
 
 /**

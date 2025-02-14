@@ -28,7 +28,7 @@ export const DiagnosticsItemRow = ({ data }: any) => {
               // @ts-expect-error poorly typed function
               await handlePressImportButton(null, data.secret);
             } catch (error) {
-              logger.error(new RainbowError('Error restoring from wallet diagnostics'), {
+              logger.error(new RainbowError('[DiagnosticsItemRow]: Error restoring from wallet diagnostics'), {
                 message: (error as Error).message,
                 context: 'restore',
               });
@@ -113,7 +113,6 @@ export const DiagnosticsItemRow = ({ data }: any) => {
           </Text>
         </View>
       </ButtonPressAnimation>
-      {/* @ts-expect-error JS component */}
       <Divider />
     </ColumnWithMargins>
   );

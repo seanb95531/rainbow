@@ -5,12 +5,11 @@ import { InteractionManager, PressableProps } from 'react-native';
 import Animated, { useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
 import { ButtonPressAnimation } from '@/components/animations';
 import { CopyFloatingEmojis } from '@/components/floating-emojis';
-import { enableActionsOnReadOnlyWallet, useExperimentalFlag, SWAPS_V2 } from '@/config';
+import { enableActionsOnReadOnlyWallet } from '@/config';
 import { AccentColorProvider, Box, Column, Columns, Inset, Stack, Text, useColorMode } from '@/design-system';
-import { useAccountProfile, useAccountSettings, useWallets } from '@/hooks';
-import { delayNext } from '@/hooks/useMagicAutofocus';
+import { useAccountProfile, useWallets } from '@/hooks';
 import { useNavigation } from '@/navigation';
-import { ethereumUtils, watchingAlert } from '@/utils';
+import { watchingAlert } from '@/utils';
 import Routes from '@rainbow-me/routes';
 import showWalletErrorAlert from '@/helpers/support';
 import { analytics } from '@/analytics';
@@ -18,7 +17,6 @@ import { useRecoilState } from 'recoil';
 import { useRemoteConfig } from '@/model/remoteConfig';
 import { useAccountAccentColor } from '@/hooks/useAccountAccentColor';
 import { addressCopiedToastAtom } from '@/recoil/addressCopiedToastAtom';
-import { Network } from '@/networks/types';
 import { swapsStore } from '@/state/swaps/swapsStore';
 import { userAssetsStore } from '@/state/assets/userAssets';
 
@@ -71,7 +69,7 @@ export function ProfileActionButtonsRow() {
             </Column>
             <Column>
               <Animated.View style={[expandStyle]}>
-                <MoreButton />
+                <CopyButton />
               </Animated.View>
             </Column>
           </Columns>
@@ -169,9 +167,6 @@ function BuyButton() {
 
 function SwapButton() {
   const { isReadOnlyWallet } = useWallets();
-  const { accountAddress } = useAccountSettings();
-  const remoteConfig = useRemoteConfig();
-  const swapsV2Enabled = useExperimentalFlag(SWAPS_V2) || remoteConfig.swaps_v2;
   const { navigate } = useNavigation();
 
   const handlePress = React.useCallback(async () => {
@@ -179,30 +174,16 @@ function SwapButton() {
       analytics.track('Tapped "Swap"', {
         category: 'home screen',
       });
-      if (swapsV2Enabled) {
-        swapsStore.setState({
-          inputAsset: userAssetsStore.getState().getHighestValueAsset(),
-        });
-        InteractionManager.runAfterInteractions(() => {
-          navigate(Routes.SWAP);
-        });
-        return;
-      }
-
-      android && delayNext();
-
-      const mainnetEth = await ethereumUtils.getNativeAssetForNetwork(Network.mainnet, accountAddress);
-      navigate(Routes.EXCHANGE_MODAL, {
-        fromDiscover: true,
-        params: {
-          inputAsset: mainnetEth,
-        },
-        screen: Routes.MAIN_EXCHANGE_SCREEN,
+      swapsStore.setState({
+        inputAsset: userAssetsStore.getState().getHighestValueNativeAsset(),
+      });
+      InteractionManager.runAfterInteractions(() => {
+        navigate(Routes.SWAP);
       });
     } else {
       watchingAlert();
     }
-  }, [accountAddress, isReadOnlyWallet, navigate, swapsV2Enabled]);
+  }, [isReadOnlyWallet, navigate]);
 
   return (
     <ActionButton icon="􀖅" onPress={handlePress} testID="swap-button">
@@ -235,13 +216,17 @@ function SendButton() {
   );
 }
 
-export function MoreButton() {
-  // ////////////////////////////////////////////////////
-  // Handlers
-
+export function CopyButton() {
   const [isToastActive, setToastActive] = useRecoilState(addressCopiedToastAtom);
   const { accountAddress } = useAccountProfile();
+  const { isDamaged } = useWallets();
+
   const handlePressCopy = React.useCallback(() => {
+    if (isDamaged) {
+      showWalletErrorAlert();
+      return;
+    }
+
     if (!isToastActive) {
       setToastActive(true);
       setTimeout(() => {
@@ -249,11 +234,10 @@ export function MoreButton() {
       }, 2000);
     }
     Clipboard.setString(accountAddress);
-  }, [accountAddress, isToastActive, setToastActive]);
+  }, [accountAddress, isDamaged, isToastActive, setToastActive]);
 
   return (
     <>
-      {/* @ts-expect-error JavaScript component */}
       <CopyFloatingEmojis textToCopy={accountAddress}>
         <ActionButton onPress={handlePressCopy} icon="􀐅" testID="receive-button">
           {lang.t('wallet.copy')}

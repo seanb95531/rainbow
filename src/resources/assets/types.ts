@@ -1,6 +1,6 @@
-import { Network } from '@/helpers/networkTypes';
 import { NativeCurrencyKey, ParsedAddressAsset } from '@/entities';
 import { TokenColors } from '@/graphql/__generated__/metadata';
+import { Network } from '@/state/backendNetworks/types';
 
 export type AddysAccountAssetsResponse = {
   meta: AddysAccountAssetsMeta;
@@ -28,7 +28,7 @@ export type AddysAddressAsset = {
 
 export type AddysAsset = {
   asset_code: string;
-  colors: TokenColors;
+  colors?: TokenColors;
   decimals: number;
   icon_url?: string;
   name: string;
@@ -37,6 +37,7 @@ export type AddysAsset = {
   price?: AddysAssetPrice;
   symbol: string;
   type?: string;
+  transferable?: boolean;
 };
 
 export type AddysNetworkDetails = {
@@ -54,14 +55,14 @@ export interface ParsedAsset {
   address: string;
   color?: string;
   colors?: TokenColors;
-  chainId?: number;
+  chainId: number;
   chainName?: string;
   decimals: number;
   icon_url?: string;
   isNativeAsset?: boolean;
   name: string;
   mainnet_address?: string;
-  network: Network;
+  network: string;
   networks?: Record<string, AddysNetworkDetails>;
   price?: {
     changed_at?: number;

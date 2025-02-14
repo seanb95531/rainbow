@@ -27,12 +27,11 @@ import Routes from '@rainbow-me/routes';
 import styled from '@/styled-thing';
 import { position } from '@/styles';
 import { ThemeContextProps, useTheme } from '@/theme';
-import logger from 'logger';
+import { logger } from '@/logger';
 import { IS_ANDROID, IS_TEST } from '@/env';
 import { WelcomeScreenRainbowButton } from '@/screens/WelcomeScreen/WelcomeScreenRainbowButton';
 
-// @ts-expect-error Our implementation of SC complains
-const Container = styled.View({
+const Container = styled(View)({
   ...position.coverAsObject,
   alignItems: 'center',
   backgroundColor: ({ theme: { colors } }: { theme: ThemeContextProps }) => colors.white,
@@ -85,7 +84,7 @@ export default function WelcomeScreen() {
   useEffect(() => {
     const initialize = async () => {
       if (IS_TEST) {
-        logger.log('Skipping animations because IS_TEST is true');
+        logger.debug('[WelcomeScreen] Skipping animations because IS_TEST is true');
         contentAnimation.value = 1;
         createWalletButtonAnimation.value = 1;
         colorAnimation.value = 0;

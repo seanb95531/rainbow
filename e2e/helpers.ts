@@ -1,11 +1,13 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable no-await-in-loop */
 import { exec } from 'child_process';
 import { JsonRpcProvider } from '@ethersproject/providers';
 import { Wallet } from '@ethersproject/wallet';
 import { expect, device, element, by, waitFor } from 'detox';
-import { parseEther } from '@ethersproject/units';
+import { formatEther, parseEther } from '@ethersproject/units';
+import { IosElementAttributes, AndroidElementAttributes } from 'detox/detox';
 
-const TESTING_WALLET = '0x3Cb462CDC5F809aeD0558FBEe151eD5dC3D3f608';
+const TESTING_WALLET = '0x3637f053D542E6D00Eee42D656dD7C59Fa33a62F';
 
 const DEFAULT_TIMEOUT = 20_000;
 const android = device.getPlatform() === 'android';
@@ -18,12 +20,12 @@ interface ProviderFunction {
   _instance?: JsonRpcProvider;
 }
 
-export async function startHardhat() {
+export async function startAnvil() {
   await delayTime('short');
-  exec('yarn hardhat');
+  exec('yarn anvil');
 }
 
-export async function killHardhat() {
+export async function killAnvil() {
   await delayTime('short');
   exec('kill $(lsof -t -i:8545)');
 }
@@ -51,14 +53,14 @@ export async function importWalletFlow(customSeed?: string) {
   await checkIfVisible('wallet-screen');
 }
 
-export async function beforeAllcleanApp({ hardhat }: { hardhat?: boolean }) {
+export async function beforeAllcleanApp({ anvil }: { anvil?: boolean }) {
   jest.resetAllMocks();
-  hardhat && (await startHardhat());
+  anvil && (await startAnvil());
 }
 
-export async function afterAllcleanApp({ hardhat }: { hardhat?: boolean }) {
+export async function afterAllcleanApp({ anvil }: { anvil?: boolean }) {
   await device.clearKeychain();
-  hardhat && (await killHardhat());
+  anvil && (await killAnvil());
 }
 
 export async function tap(elementId: string | RegExp) {
@@ -69,6 +71,16 @@ export async function tap(elementId: string | RegExp) {
     throw new Error(`Error tapping element by id "${elementId}": ${error}`);
   }
 }
+
+interface CustomElementAttributes {
+  elements: Array<IosElementAttributes | AndroidElementAttributes>;
+}
+
+type ElementAttributes = IosElementAttributes & AndroidElementAttributes & CustomElementAttributes;
+
+export const fetchElementAttributes = async (testId: string): Promise<ElementAttributes> => {
+  return (await element(by.id(testId)).getAttributes()) as ElementAttributes;
+};
 
 export async function waitAndTap(elementId: string | RegExp, timeout = DEFAULT_TIMEOUT) {
   await delayTime('medium');
@@ -188,17 +200,19 @@ export async function clearField(elementId: string | RegExp) {
   }
 }
 
-export async function tapAndLongPress(elementId: string | RegExp) {
+export async function tapAndLongPress(elementId: string | RegExp, duration?: number) {
   try {
-    return await element(by.id(elementId)).longPress();
+    // @ts-expect-error
+    return await element(by.id(elementId)).longPress(duration);
   } catch (error) {
     throw new Error(`Error long-pressing element by id "${elementId}": ${error}`);
   }
 }
 
-export async function tapAndLongPressByText(text: string | RegExp) {
+export async function tapAndLongPressByText(text: string | RegExp, duration?: number) {
   try {
-    return await element(by.text(text)).longPress();
+    // @ts-expect-error
+    return await element(by.text(text)).longPress(duration);
   } catch (error) {
     throw new Error(`Error long-pressing element by text "${text}": ${error}`);
   }
@@ -263,15 +277,28 @@ export async function scrollTo(scrollviewId: string | RegExp, edge: Direction) {
   }
 }
 
-export async function swipeUntilVisible(elementId: string | RegExp, scrollViewId: string, direction: Direction, pctVisible = 75) {
+export async function swipeUntilVisible(
+  elementId: string | RegExp,
+  scrollViewId: string,
+  direction: Direction,
+  percentageVisible?: number,
+  maxAttempts?: number
+) {
   let stop = false;
+  let attempt = 0;
+
   while (!stop) {
     try {
+      attempt++;
       await waitFor(element(by.id(elementId)))
-        .toBeVisible(pctVisible)
+        .toBeVisible(percentageVisible)
         .withTimeout(500);
+
       stop = true;
-    } catch {
+    } catch (e) {
+      if (maxAttempts && attempt >= maxAttempts) {
+        throw e;
+      }
       await swipe(scrollViewId, direction, 'slow', 0.2);
     }
   }
@@ -371,7 +398,7 @@ export async function checkIfElementHasString(elementID: string | RegExp, text: 
 export async function relaunchApp() {
   try {
     await device.terminateApp('me.rainbow');
-    return await device.launchApp({ newInstance: true });
+    return await device.launchApp({ newInstance: true, launchArgs: { IS_TEST: true } });
   } catch (error) {
     throw new Error(`Error relaunching app: ${error}`);
   }
@@ -446,21 +473,33 @@ export const getProvider: ProviderFunction = () => {
 };
 
 export async function sendETHtoTestWallet() {
+  console.log('getting provider');
   const provider = getProvider();
-  // Hardhat account 0 that has 10000 ETH
+  console.log('got provider', provider);
+  // anvil account 0 that has 10000 ETH
   const wallet = new Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', provider);
+  console.log('got wallet', wallet);
   // Sending 20 ETH so we have enough to pay the tx fees even when the gas is too high
+  console.log('sending eth');
   await wallet.sendTransaction({
     to: TESTING_WALLET,
     value: parseEther('20'),
   });
+  console.log('sent eth');
+  await delayTime('long');
+  console.log('checking balance');
+  const balance = await provider.getBalance(TESTING_WALLET);
+  console.log('got balance', formatEther(balance));
+  if (balance.lt(parseEther('20'))) {
+    throw Error('Error sending ETH to test wallet');
+  }
   return true;
 }
 
 export async function openDeeplinkColdStart(url: string) {
   await device.terminateApp();
   await device.launchApp({
-    launchArgs: { detoxEnableSynchronization: 0 },
+    launchArgs: { detoxEnableSynchronization: 0, IS_TEST: true },
     newInstance: true,
     url,
   });
@@ -471,6 +510,7 @@ export async function openDeeplinkFromBackground(url: string) {
   await device.sendToHome();
   await device.enableSynchronization();
   await device.launchApp({
+    launchArgs: { IS_TEST: true },
     newInstance: false,
     url,
   });

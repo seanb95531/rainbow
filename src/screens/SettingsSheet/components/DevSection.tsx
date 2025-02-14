@@ -1,13 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import lang from 'i18n-js';
 import React, { useCallback, useContext, useState } from 'react';
-import {
-  // @ts-ignore
-  HARDHAT_URL_ANDROID,
-  // @ts-ignore
-  HARDHAT_URL_IOS,
-} from 'react-native-dotenv';
-// @ts-ignore
+// @ts-expect-error - react-native-restart is not typed
 import Restart from 'react-native-restart';
 import { useDispatch } from 'react-redux';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -16,27 +10,19 @@ import MenuContainer from './MenuContainer';
 import MenuItem from './MenuItem';
 import { WrappedAlert as Alert } from '@/helpers/alert';
 import { deleteAllBackups } from '@/handlers/cloudBackup';
-import { web3SetHttpProvider } from '@/handlers/web3';
 import { RainbowContext } from '@/helpers/RainbowContext';
 import isTestFlight from '@/helpers/isTestFlight';
-import networkTypes from '@/helpers/networkTypes';
 import { useWallets } from '@/hooks';
 import { ImgixImage } from '@/components/images';
 import { wipeKeychain } from '@/model/keychain';
 import { clearAllStorages } from '@/model/mmkv';
 import { Navigation } from '@/navigation';
 import { useNavigation } from '@/navigation/Navigation';
-import { explorerInit } from '@/redux/explorer';
 import { clearImageMetadataCache } from '@/redux/imageMetadata';
 import store from '@/redux/store';
 import { walletsUpdate } from '@/redux/wallets';
 import Routes from '@/navigation/routesNames';
-import logger from 'logger';
-import {
-  removeNotificationSettingsForWallet,
-  useAllNotificationSettingsFromStorage,
-  addDefaultNotificationGroupSettings,
-} from '@/notifications/settings';
+import { logger, RainbowError } from '@/logger';
 import { IS_DEV } from '@/env';
 import { getPublicKeyOfTheSigningWalletAndCreateWalletIfNeeded } from '@/helpers/signingWallet';
 import { SettingsLoadingIndicator } from '@/screens/SettingsSheet/components/SettingsLoadingIndicator';
@@ -45,16 +31,19 @@ import { serialize } from '@/logger/logDump';
 import { isAuthenticated } from '@/utils/authentication';
 
 import { getFCMToken } from '@/notifications/tokens';
-import { removeGlobalNotificationSettings } from '@/notifications/settings/settings';
 import { nonceStore } from '@/state/nonces';
 import { pendingTransactionsStore } from '@/state/pendingTransactions';
+import { useConnectedToAnvilStore } from '@/state/connectedToAnvil';
+import { addDefaultNotificationGroupSettings } from '@/notifications/settings/initialization';
+import { unsubscribeAllNotifications } from '@/notifications/settings/settings';
+import FastImage from 'react-native-fast-image';
+import { analyzeReactQueryStore, clearReactQueryCache } from '@/react-query/reactQueryUtils';
 
 const DevSection = () => {
   const { navigate } = useNavigation();
   const { config, setConfig } = useContext(RainbowContext) as any;
   const { wallets } = useWallets();
-  const { walletNotificationSettings } = useAllNotificationSettingsFromStorage();
-  const dispatch = useDispatch();
+  const setConnectedToAnvil = useConnectedToAnvilStore.getState().setConnectedToAnvil;
 
   const [loadingStates, setLoadingStates] = useState({
     clearLocalStorage: false,
@@ -73,17 +62,17 @@ const DevSection = () => {
     [config, setConfig]
   );
 
-  const connectToHardhat = useCallback(async () => {
+  const connectToAnvil = useCallback(async () => {
     try {
-      const ready = await web3SetHttpProvider((ios && HARDHAT_URL_IOS) || (android && HARDHAT_URL_ANDROID) || 'http://127.0.0.1:8545');
-      logger.log('connected to hardhat', ready);
+      const connectToAnvil = useConnectedToAnvilStore.getState().connectedToAnvil;
+      setConnectedToAnvil(!connectToAnvil);
+      logger.debug(`[DevSection] connected to anvil`);
     } catch (e) {
-      await web3SetHttpProvider(networkTypes.mainnet);
-      logger.log('error connecting to hardhat', e);
+      setConnectedToAnvil(false);
+      logger.error(new RainbowError(`[DevSection] error connecting to anvil: ${e}`));
     }
     navigate(Routes.PROFILE_SCREEN);
-    dispatch(explorerInit());
-  }, [dispatch, navigate]);
+  }, [navigate, setConnectedToAnvil]);
 
   const checkAlert = useCallback(async () => {
     try {
@@ -115,10 +104,30 @@ const DevSection = () => {
   };
 
   const clearImageCache = async () => {
-    ImgixImage.clearDiskCache();
-    // clearImageCache doesn't exist on ImgixImage
-    // @ts-ignore
-    ImgixImage.clearImageCache();
+    try {
+      ImgixImage.clearDiskCache();
+    } catch (e) {
+      logger.error(new RainbowError(`Error clearing ImgixImage disk cache: ${e}`));
+    }
+
+    try {
+      // @ts-expect-error - clearImageCache doesn't exist on ImgixImage
+      ImgixImage.clearImageCache();
+    } catch (e) {
+      logger.error(new RainbowError(`Error clearing ImgixImage cache: ${e}`));
+    }
+
+    try {
+      FastImage.clearDiskCache();
+    } catch (e) {
+      logger.error(new RainbowError(`Error clearing FastImage disk cache: ${e}`));
+    }
+
+    try {
+      FastImage.clearMemoryCache();
+    } catch (e) {
+      logger.error(new RainbowError(`Error clearing FastImage memory cache: ${e}`));
+    }
   };
 
   const [errorObj, setErrorObj] = useState(null as any);
@@ -126,17 +135,6 @@ const DevSection = () => {
   const throwRenderError = () => {
     setErrorObj({ error: 'this throws render error' });
   };
-
-  const clearAllNotificationSettings = useCallback(async () => {
-    // loop through notification settings and unsubscribe all wallets
-    // from firebase first or we’re gonna keep getting them even after
-    // clearing storage and before changing settings
-    removeGlobalNotificationSettings();
-    if (walletNotificationSettings.length > 0) {
-      return Promise.all(walletNotificationSettings.map(wallet => removeNotificationSettingsForWallet(wallet.address)));
-    }
-    return Promise.resolve();
-  }, [walletNotificationSettings]);
 
   const clearPendingTransactions = async () => {
     const { clearPendingTransactions: clearPendingTxs } = pendingTransactionsStore.getState();
@@ -149,7 +147,7 @@ const DevSection = () => {
   const clearLocalStorage = async () => {
     setLoadingStates(prev => ({ ...prev, clearLocalStorage: true }));
 
-    await clearAllNotificationSettings();
+    await unsubscribeAllNotifications();
     await AsyncStorage.clear();
     clearAllStorages();
     addDefaultNotificationGroupSettings(true);
@@ -166,7 +164,7 @@ const DevSection = () => {
   const clearMMKVStorage = async () => {
     setLoadingStates(prev => ({ ...prev, clearMmkvStorage: true }));
 
-    await clearAllNotificationSettings();
+    await unsubscribeAllNotifications();
     clearAllStorages();
     addDefaultNotificationGroupSettings(true);
 
@@ -261,6 +259,24 @@ const DevSection = () => {
         <>
           <Menu header="Rainbow Developer Settings">
             <MenuItem
+              leftComponent={<MenuItem.TextIcon icon="🔄" isEmoji />}
+              onPress={() => Restart.Restart()}
+              size={52}
+              titleComponent={<MenuItem.Title text={lang.t('developer_settings.restart_app')} />}
+            />
+            <MenuItem
+              leftComponent={<MenuItem.TextIcon icon="🔦" isEmoji />}
+              onPress={() => analyzeReactQueryStore()}
+              size={52}
+              titleComponent={<MenuItem.Title text={lang.t('developer_settings.analyze_react_query')} />}
+            />
+            <MenuItem
+              leftComponent={<MenuItem.TextIcon icon="🗑️" isEmoji />}
+              onPress={() => clearReactQueryCache()}
+              size={52}
+              titleComponent={<MenuItem.Title text={lang.t('developer_settings.clear_react_query_cache')} />}
+            />
+            <MenuItem
               leftComponent={<MenuItem.TextIcon icon="💥" isEmoji />}
               onPress={clearAsyncStorage}
               size={52}
@@ -287,12 +303,6 @@ const DevSection = () => {
               titleComponent={<MenuItem.Title text={lang.t('developer_settings.clear_image_cache')} />}
             />
             <MenuItem
-              leftComponent={<MenuItem.TextIcon icon="🔄" isEmoji />}
-              onPress={() => Restart.Restart()}
-              size={52}
-              titleComponent={<MenuItem.Title text={lang.t('developer_settings.restart_app')} />}
-            />
-            <MenuItem
               leftComponent={<MenuItem.TextIcon icon="💥" isEmoji />}
               onPress={throwRenderError}
               size={52}
@@ -314,10 +324,18 @@ const DevSection = () => {
             />
             <MenuItem
               leftComponent={<MenuItem.TextIcon icon="👷" isEmoji />}
-              onPress={connectToHardhat}
+              onPress={connectToAnvil}
               size={52}
-              testID="hardhat-section"
-              titleComponent={<MenuItem.Title text={lang.t('developer_settings.connect_to_hardhat')} />}
+              testID="anvil-section"
+              titleComponent={
+                <MenuItem.Title
+                  text={
+                    useConnectedToAnvilStore.getState().connectedToAnvil
+                      ? lang.t('developer_settings.disconnect_to_anvil')
+                      : lang.t('developer_settings.connect_to_anvil')
+                  }
+                />
+              }
             />
             <MenuItem
               leftComponent={<MenuItem.TextIcon icon="🏖️" isEmoji />}
@@ -344,7 +362,7 @@ const DevSection = () => {
                 Alert.alert(publicKey ? `Copied` : `Couldn't get public key`);
               }}
               size={52}
-              titleComponent={<MenuItem.Title text={'Copy signing wallet address'} />}
+              titleComponent={<MenuItem.Title text={lang.t('developer_settings.copy_signing_wallet_address')} />}
             />
             <MenuItem
               leftComponent={<MenuItem.TextIcon icon="🌎" isEmoji />}
@@ -355,10 +373,10 @@ const DevSection = () => {
                   Clipboard.setString(fcmToken);
                 }
 
-                Alert.alert(fcmToken ? `Copied` : `Couldn't get fcm token`);
+                Alert.alert(fcmToken ? 'Copied' : "Couldn't get FCM token");
               }}
               size={52}
-              titleComponent={<MenuItem.Title text={'Copy FCM token'} />}
+              titleComponent={<MenuItem.Title text={lang.t('developer_settings.copy_fcm_token')} />}
             />
             {getExperimetalFlag(LOG_PUSH) && (
               <MenuItem
@@ -369,7 +387,7 @@ const DevSection = () => {
                   Alert.alert(`Copied`);
                 }}
                 size={52}
-                titleComponent={<MenuItem.Title text={'Copy log lines'} />}
+                titleComponent={<MenuItem.Title text={lang.t('developer_settings.copy_log_lines')} />}
               />
             )}
           </Menu>

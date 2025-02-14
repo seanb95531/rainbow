@@ -1,24 +1,22 @@
 /* eslint-disable no-nested-ternary */
-import c from 'chroma-js';
 import * as i18n from '@/languages';
+import c from 'chroma-js';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Text as RNText, StyleSheet } from 'react-native';
 import Animated, { useDerivedValue, useSharedValue } from 'react-native-reanimated';
-import React, { memo, useCallback, useMemo } from 'react';
 
-import { AnimatedText, Bleed, Box, Inline, Text, TextIcon, globalColors, useColorMode } from '@/design-system';
-import { opacity } from '@/__swaps__/utils/swaps';
-import { ethereumUtils, showActionSheetWithOptions } from '@/utils';
-import { ChainImage } from '@/components/coin-icon/ChainImage';
-import { ChainId, ChainName, ChainNameDisplay } from '@/__swaps__/types/chains';
 import { useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
-import { ContextMenuButton } from '@/components/context-menu';
-import { useAccountAccentColor } from '@/hooks';
-import { OnPressMenuItemEventObject } from 'react-native-ios-context-menu';
-import { userAssetsStore } from '@/state/assets/userAssets';
-import { useSharedValueState } from '@/hooks/reanimated/useSharedValueState';
-import { chainNameForChainIdWithMainnetSubstitution } from '@/__swaps__/utils/chains';
+import { ChainId } from '@/state/backendNetworks/types';
+import { opacity } from '@/__swaps__/utils/swaps';
 import { analyticsV2 } from '@/analytics';
+import { ChainImage } from '@/components/coin-icon/ChainImage';
+import { AnimatedText, Bleed, Box, Inline, Text, TextIcon, globalColors, useColorMode } from '@/design-system';
+import { useAccountAccentColor } from '@/hooks';
+import { useSharedValueState } from '@/hooks/reanimated/useSharedValueState';
+import { userAssetsStore, useUserAssetsStore } from '@/state/assets/userAssets';
 import { swapsStore } from '@/state/swaps/swapsStore';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { DropdownMenu, MenuItem } from '@/components/DropdownMenu';
 
 type ChainSelectionProps = {
   allText?: string;
@@ -30,8 +28,14 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
   const { accentColor: accountColor } = useAccountAccentColor();
   const { selectedOutputChainId, setSelectedOutputChainId } = useSwapContext();
 
-  const balanceSortedChainList = userAssetsStore.getState().getBalanceSortedChainList();
-  const inputListFilter = useSharedValue(userAssetsStore.getState().filter);
+  const chainLabels = useBackendNetworksStore(state => state.getChainsLabel());
+  const networkBadges = useBackendNetworksStore(state => state.getChainsBadge());
+
+  // chains sorted by balance on output, chains without balance hidden on input
+  const balanceSortedChainList = useUserAssetsStore(state => (output ? state.getBalanceSortedChainList() : state.getChainsWithBalance()));
+  const filter = useUserAssetsStore(state => state.filter);
+
+  const inputListFilter = useSharedValue(filter);
 
   const accentColor = useMemo(() => {
     if (c.contrast(accountColor, isDarkMode ? '#191A1C' : globalColors.white100) < (isDarkMode ? 2.125 : 1.5)) {
@@ -44,14 +48,14 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
 
   const chainName = useDerivedValue(() => {
     return output
-      ? ChainNameDisplay[selectedOutputChainId.value]
+      ? chainLabels[selectedOutputChainId.value]
       : inputListFilter.value === 'all'
         ? allText
-        : ChainNameDisplay[inputListFilter.value as ChainId];
+        : chainLabels[inputListFilter.value as ChainId];
   });
 
   const handleSelectChain = useCallback(
-    ({ nativeEvent: { actionKey } }: Omit<OnPressMenuItemEventObject, 'isUsingActionSheetFallback'>) => {
+    (actionKey: string) => {
       analyticsV2.track(analyticsV2.event.swapsChangedChainId, {
         inputAsset: swapsStore.getState().inputAsset,
         type: output ? 'output' : 'input',
@@ -71,16 +75,16 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
   );
 
   const menuConfig = useMemo(() => {
-    const supportedChains = balanceSortedChainList.map(chainId => {
-      const networkName = chainNameForChainIdWithMainnetSubstitution(chainId);
-      const displayName = ChainNameDisplay[chainId];
-
+    let supportedChains: MenuItem<string>[] = [];
+    supportedChains = balanceSortedChainList.map(chainId => {
       return {
         actionKey: `${chainId}`,
-        actionTitle: displayName,
+        actionTitle: chainLabels[chainId],
         icon: {
-          iconType: 'ASSET',
-          iconValue: `${networkName}Badge${chainId === ChainId.mainnet ? '' : 'NoShadow'}`,
+          iconType: 'REMOTE',
+          iconValue: {
+            uri: networkBadges[chainId],
+          },
         },
       };
     });
@@ -88,10 +92,10 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
     if (!output) {
       supportedChains.unshift({
         actionKey: 'all',
-        actionTitle: i18n.t(i18n.l.exchange.all_networks) as ChainName,
+        actionTitle: i18n.t(i18n.l.exchange.all_networks),
         icon: {
-          iconType: 'icon',
-          iconValue: '􀆪',
+          iconType: 'SYSTEM',
+          iconValue: 'globe',
         },
       });
     }
@@ -99,25 +103,7 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
     return {
       menuItems: supportedChains,
     };
-  }, [balanceSortedChainList, output]);
-
-  const onShowActionSheet = useCallback(() => {
-    const chainTitles = menuConfig.menuItems.map(chain => chain.actionTitle);
-
-    showActionSheetWithOptions(
-      {
-        options: chainTitles,
-        showSeparators: true,
-      },
-      (index: number | undefined) => {
-        // NOTE: When they click away from the menu, the index is undefined
-        if (typeof index === 'undefined') return;
-        handleSelectChain({
-          nativeEvent: { actionKey: menuConfig.menuItems[index].actionKey, actionTitle: '' },
-        });
-      }
-    );
-  }, [handleSelectChain, menuConfig.menuItems]);
+  }, [balanceSortedChainList, chainLabels, networkBadges, output]);
 
   return (
     <Box as={Animated.View} paddingBottom={output ? '8px' : { custom: 14 }} paddingHorizontal="20px" paddingTop="20px">
@@ -161,16 +147,8 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
           </Inline>
         )}
 
-        <ContextMenuButton
-          hitSlop={20}
-          menuItems={menuConfig.menuItems}
-          menuTitle=""
-          onPressMenuItem={handleSelectChain}
-          onPressAndroid={onShowActionSheet}
-          testID={`chain-selection-${output ? 'output' : 'input'}`}
-        >
-          <Inline alignVertical="center" space="6px" wrap={false}>
-            {/* TODO: We need to add some ethereum utils to handle worklet functions */}
+        <DropdownMenu menuConfig={menuConfig} onPressMenuItem={handleSelectChain} testID={`chain-selection-${output ? 'output' : 'input'}`}>
+          <Box paddingVertical="6px" paddingLeft="16px" flexDirection="row" alignItems="center" justifyContent="center" gap={6}>
             <ChainButtonIcon output={output} />
             <AnimatedText color={isDarkMode ? 'labelSecondary' : 'label'} size="15pt" weight="heavy">
               {chainName}
@@ -178,8 +156,8 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
             <Text align="center" color={isDarkMode ? 'labelTertiary' : 'labelSecondary'} size="icon 13px" weight="bold">
               􀆏
             </Text>
-          </Inline>
-        </ContextMenuButton>
+          </Box>
+        </DropdownMenu>
       </Inline>
     </Box>
   );
@@ -188,18 +166,19 @@ export const ChainSelection = memo(function ChainSelection({ allText, output }: 
 const ChainButtonIcon = ({ output }: { output: boolean | undefined }) => {
   const { selectedOutputChainId: animatedSelectedOutputChainId } = useSwapContext();
 
-  const userAssetsFilter = userAssetsStore(state => (output ? undefined : state.filter));
+  const userAssetsFilter = useUserAssetsStore(state => (output ? undefined : state.filter));
   const selectedOutputChainId = useSharedValueState(animatedSelectedOutputChainId, { pauseSync: !output });
 
   return (
     <Bleed vertical="6px">
       {output ? (
         <ChainImage
-          chain={ethereumUtils.getNetworkFromChainId(selectedOutputChainId ?? animatedSelectedOutputChainId.value ?? ChainId.mainnet)}
+          chainId={selectedOutputChainId ?? animatedSelectedOutputChainId.value ?? ChainId.mainnet}
+          position="relative"
           size={16}
         />
       ) : userAssetsFilter && userAssetsFilter !== 'all' ? (
-        <ChainImage chain={ethereumUtils.getNetworkFromChainId(userAssetsFilter)} size={16} />
+        <ChainImage chainId={userAssetsFilter} size={16} position="relative" />
       ) : (
         <></>
       )}

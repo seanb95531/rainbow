@@ -1,13 +1,10 @@
 import lang from 'i18n-js';
 import * as ls from '@/storage';
-import { Linking, NativeModules } from 'react-native';
 import { WrappedAlert as Alert } from '@/helpers/alert';
 import { ReviewPromptAction } from '@/storage/schema';
-import { IS_IOS } from '@/env';
-import { logger } from '@/logger';
-import { IS_TESTING } from 'react-native-dotenv';
-
-const { RainbowRequestReview, RNReview } = NativeModules;
+import { logger, RainbowError } from '@/logger';
+import * as StoreReview from 'expo-store-review';
+import { IS_TEST } from '@/env';
 
 export const AppleReviewAddress = 'itms-apps://itunes.apple.com/us/app/appName/id1457119021?mt=8&action=write-review';
 
@@ -30,9 +27,9 @@ export const numberOfTimesBeforePrompt: {
 };
 
 export const handleReviewPromptAction = async (action: ReviewPromptAction) => {
-  logger.debug(`handleReviewPromptAction: ${action}`);
+  logger.debug(`[reviewAlert]: handleReviewPromptAction: ${action}`);
 
-  if (IS_TESTING === 'true') {
+  if (IS_TEST) {
     return;
   }
 
@@ -53,10 +50,10 @@ export const handleReviewPromptAction = async (action: ReviewPromptAction) => {
   }
 
   const timeOfLastPrompt = ls.review.get(['timeOfLastPrompt']) || 0;
-  logger.debug(`timeOfLastPrompt: ${timeOfLastPrompt}`);
+  logger.debug(`[reviewAlert]: timeOfLastPrompt: ${timeOfLastPrompt}`);
 
   actionToDispatch.numOfTimesDispatched += 1;
-  logger.debug(`numOfTimesDispatched: ${actionToDispatch.numOfTimesDispatched}`);
+  logger.debug(`[reviewAlert]: numOfTimesDispatched: ${actionToDispatch.numOfTimesDispatched}`);
 
   const hasReachedAmount = actionToDispatch.numOfTimesDispatched >= numberOfTimesBeforePrompt[action];
 
@@ -66,7 +63,7 @@ export const handleReviewPromptAction = async (action: ReviewPromptAction) => {
   }
 
   if (hasReachedAmount && timeOfLastPrompt + TWO_MONTHS <= Date.now()) {
-    logger.debug(`Prompting for review`);
+    logger.debug(`[reviewAlert]: Prompting for review`);
     actionToDispatch.numOfTimesDispatched = 0;
     ls.review.set(['timeOfLastPrompt'], Date.now());
     promptForReview();
@@ -78,17 +75,14 @@ export const handleReviewPromptAction = async (action: ReviewPromptAction) => {
 export const promptForReview = async () => {
   Alert.alert(lang.t('review.alert.are_you_enjoying_rainbow'), lang.t('review.alert.leave_a_review'), [
     {
-      onPress: () => {
-        ls.review.set(['hasReviewed'], true);
-
-        if (IS_IOS) {
-          RainbowRequestReview?.requestReview((handled: boolean) => {
-            if (!handled) {
-              Linking.openURL(AppleReviewAddress);
-            }
+      onPress: async () => {
+        try {
+          ls.review.set(['hasReviewed'], true);
+          await StoreReview.requestReview();
+        } catch (e) {
+          logger.error(new RainbowError('[reviewAlert]: Failed to request review'), {
+            error: e,
           });
-        } else {
-          RNReview.show();
         }
       },
       text: lang.t('review.alert.yes'),

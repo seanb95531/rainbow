@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { lightModeThemeColors } from '../styles/colors';
 import { ParsedAddressAsset } from '@/entities';
 import { ethereumUtils, isETH, pseudoRandomArrayItemFromString } from '@/utils';
+import { getHighContrastColor } from './useAccountAccentColor';
 import { usePersistentDominantColorFromImage } from './usePersistentDominantColorFromImage';
 
 export default function useColorForAsset(
@@ -19,6 +20,10 @@ export default function useColorForAsset(
   const isDarkMode = forceLightMode || isDarkModeTheme;
 
   const colorDerivedFromAddress = useMemo(() => {
+    if (!resolvedAddress) {
+      return undefined;
+    }
+
     const color = isETH(resolvedAddress)
       ? isDarkMode
         ? forceETHColor
@@ -65,6 +70,8 @@ export default function useColorForAsset(
       // brighten up dark colors in dark mode
       if (isDarkMode && colors.isColorDark(color2Return)) {
         return colors.brighten(color2Return);
+      } else if (!isDarkMode) {
+        return getHighContrastColor(color2Return, isDarkMode);
       }
       return color2Return;
     } catch (e) {

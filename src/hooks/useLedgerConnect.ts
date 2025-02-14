@@ -20,7 +20,7 @@ export function useLedgerConnect({
   errorCallback?: (errorType: LEDGER_ERROR_CODES) => void;
 }) {
   const transport = useRef<TransportBLE | undefined>();
-  const timer = useRef<NodeJS.Timeout | undefined>(undefined);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isReady = useRecoilValue(LedgerIsReadyAtom);
   const [triggerPollerCleanup, setTriggerPollerCleanup] = useRecoilState(triggerPollerCleanupAtom);
   const setReadyForPolling = useSetRecoilState(readyForPollingAtom);
@@ -33,13 +33,13 @@ export function useLedgerConnect({
       if (isReady) return;
       if (errorType === LEDGER_ERROR_CODES.DISCONNECTED) {
         setReadyForPolling(false);
-        logger.info('[LedgerConnect] - Device Disconnected - Attempting Reconnect', {});
+        logger.debug('[useLedgerConnect]: Device Disconnected - Attempting Reconnect', {});
         transport.current = undefined;
         try {
           transport.current = await TransportBLE.open(deviceId);
           setReadyForPolling(true);
         } catch (e) {
-          logger.error(new RainbowError('[LedgerConnect] - Reconnect Error'), {
+          logger.error(new RainbowError('[useLedgerConnect]: Reconnect Error'), {
             error: (e as Error).message,
           });
           // temp removing this to see if it fixes an issue
@@ -64,10 +64,10 @@ export function useLedgerConnect({
   /**
    * Cleans up ledger connection polling
    */
-  const pollerCleanup = (poller: NodeJS.Timer | undefined) => {
+  const pollerCleanup = (poller: ReturnType<typeof setTimeout> | undefined) => {
     try {
       if (poller) {
-        logger.debug('[LedgerConnect] - polling tear down', {});
+        logger.debug('[useLedgerConnect]: polling tear down', {});
         clearInterval(poller);
         poller?.unref();
         timer.current = undefined;
@@ -78,7 +78,7 @@ export function useLedgerConnect({
   };
   useEffect(() => {
     if (readyForPolling && (!timer.current || triggerPollerCleanup)) {
-      logger.debug('[LedgerConnect] - init device polling', {});
+      logger.debug('[useLedgerConnect]: init device polling', {});
       setTriggerPollerCleanup(false);
       timer.current = setInterval(async () => {
         if (transport.current) {

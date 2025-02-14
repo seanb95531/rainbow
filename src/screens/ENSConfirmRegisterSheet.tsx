@@ -30,7 +30,6 @@ import {
   useENSRegistrationForm,
   useENSRegistrationStepHandler,
   useENSSearch,
-  useWallets,
 } from '@/hooks';
 import { ImgixImage } from '@/components/images';
 import { useNavigation } from '@/navigation';
@@ -39,6 +38,8 @@ import { colors } from '@/styles';
 import { usePersistentDominantColorFromImage } from '@/hooks/usePersistentDominantColorFromImage';
 import { handleReviewPromptAction } from '@/utils/reviewAlert';
 import { ReviewPromptAction } from '@/storage/schema';
+import { ActionTypes } from '@/hooks/useENSRegistrationActionHandler';
+import { ChainId } from '@/state/backendNetworks/types';
 
 export const ENSConfirmRegisterSheetHeight = 600;
 export const ENSConfirmRenewSheetHeight = 560;
@@ -64,7 +65,6 @@ function TransactionActionRow({
   return (
     <>
       <Box>
-        {/* @ts-expect-error JavaScript component */}
         <SheetActionButtonRow paddingBottom={5}>
           {/* @ts-expect-error JavaScript component */}
           <HoldToAuthorizeButton
@@ -80,10 +80,9 @@ function TransactionActionRow({
         </SheetActionButtonRow>
       </Box>
       <Box alignItems="center" justifyContent="center">
-        {/* @ts-expect-error JavaScript component */}
         <GasSpeedButton
           asset={{ color: accentColor }}
-          currentNetwork="mainnet"
+          chainId={ChainId.mainnet}
           marginBottom={DeviceInfo.hasNotch() ? 0 : undefined}
           theme="light"
         />
@@ -205,7 +204,7 @@ export default function ENSConfirmRegisterSheet() {
       [REGISTRATION_STEPS.WAIT_COMMIT_CONFIRMATION]: (
         <WaitCommitmentConfirmationContent
           accentColor={accentColor}
-          action={() => action(accentColor)}
+          action={() => (action as ActionTypes[REGISTRATION_STEPS.WAIT_COMMIT_CONFIRMATION])(accentColor)}
           secondsSinceCommitConfirmed={secondsSinceCommitConfirmed}
         />
       ),
@@ -244,7 +243,7 @@ export default function ENSConfirmRegisterSheet() {
       [REGISTRATION_STEPS.REGISTER]: (
         <TransactionActionRow
           accentColor={accentColor}
-          action={() => action(goToProfileScreen)}
+          action={() => (action as ActionTypes[REGISTRATION_STEPS.REGISTER])(goToProfileScreen)}
           isSufficientGas={Boolean(registrationCostsData?.isSufficientGasForStep)}
           isValidGas={Boolean(registrationCostsData?.isValidGas && registrationCostsData?.stepGasLimit)}
           label={lang.t('profiles.confirm.hold_to_register')}
@@ -254,7 +253,7 @@ export default function ENSConfirmRegisterSheet() {
       [REGISTRATION_STEPS.RENEW]: (
         <TransactionActionRow
           accentColor={accentColor}
-          action={() => action(goToProfileScreen)}
+          action={() => (action as ActionTypes[REGISTRATION_STEPS.RENEW])(goToProfileScreen)}
           isSufficientGas={Boolean(registrationCostsData?.isSufficientGasForRegistration && registrationCostsData?.isSufficientGasForStep)}
           isValidGas={Boolean(registrationCostsData?.isValidGas && registrationCostsData?.stepGasLimit)}
           label={lang.t('profiles.confirm.hold_to_extend')}
@@ -264,7 +263,7 @@ export default function ENSConfirmRegisterSheet() {
       [REGISTRATION_STEPS.EDIT]: (
         <TransactionActionRow
           accentColor={accentColor}
-          action={() => action(goToProfileScreen)}
+          action={() => (action as ActionTypes[REGISTRATION_STEPS.EDIT])(goToProfileScreen)}
           isSufficientGas={Boolean(registrationCostsData?.isSufficientGasForStep)}
           isValidGas={Boolean(registrationCostsData?.isValidGas && registrationCostsData?.stepGasLimit)}
           label={lang.t('profiles.confirm.hold_to_confirm')}
@@ -274,7 +273,7 @@ export default function ENSConfirmRegisterSheet() {
       [REGISTRATION_STEPS.SET_NAME]: (
         <TransactionActionRow
           accentColor={accentColor}
-          action={() => action(goToProfileScreen)}
+          action={() => (action as ActionTypes[REGISTRATION_STEPS.SET_NAME])(goToProfileScreen)}
           isSufficientGas={Boolean(registrationCostsData?.isSufficientGasForStep)}
           isValidGas={Boolean(registrationCostsData?.isValidGas && registrationCostsData?.stepGasLimit)}
           label={lang.t('profiles.confirm.hold_to_confirm')}

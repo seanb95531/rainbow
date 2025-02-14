@@ -1,20 +1,17 @@
 import { Signer } from '@ethersproject/abstract-signer';
-import { captureException } from '@sentry/react-native';
-import { IS_TESTING } from 'react-native-dotenv';
 import { ENSActionParameters, ENSRap, ENSRapActionType, RapENSAction, RapENSActionParameters } from '@/raps/common';
 import { analytics } from '@/analytics';
-import { ENSRegistrationRecords, NewTransaction, TransactionGasParamAmounts } from '@/entities';
+import { ENSRegistrationRecords, NewTransaction, TransactionGasParamAmounts, TransactionStatus } from '@/entities';
 import { estimateENSTransactionGasLimit, formatRecordsForTransaction } from '@/handlers/ens';
 import { toHex } from '@/handlers/web3';
-import { NetworkTypes } from '@/helpers';
 import { ENSRegistrationTransactionType, getENSExecutionDetails, REGISTRATION_MODES } from '@/helpers/ens';
 import * as i18n from '@/languages';
 import { saveCommitRegistrationParameters, updateTransactionRegistrationParameters } from '@/redux/ensRegistration';
 import store from '@/redux/store';
-import logger from '@/utils/logger';
+import { logger, RainbowError } from '@/logger';
 import { parseGasParamAmounts } from '@/parsers';
 import { addNewTransaction } from '@/state/pendingTransactions';
-import { Network } from '@/networks/types';
+import { ChainId, Network } from '@/state/backendNetworks/types';
 import {
   createRegisterENSRap,
   createRenewENSRap,
@@ -24,6 +21,8 @@ import {
   createTransferENSRap,
 } from '../registerENS';
 import { Logger } from '@ethersproject/logger';
+import { performanceTracking, Screens, TimeToSignOperation } from '@/state/performance/performance';
+import { IS_TEST } from '@/env';
 
 export interface ENSRapActionResponse {
   baseNonce?: number | null;
@@ -306,30 +305,29 @@ const ensAction = async (
   type: ENSRegistrationTransactionType,
   baseNonce?: number
 ): Promise<number | undefined> => {
-  logger.log(`[${actionName}] base nonce`, baseNonce, 'index:', index);
+  logger.debug(`[raps/ens]: [${actionName}] base nonce ${baseNonce} index: ${index}`);
   const { dispatch } = store;
   const { accountAddress: ownerAddress } = store.getState().settings;
 
   const { name, duration, rentPrice, records, salt, toAddress, mode } = parameters;
 
-  logger.log(`[${actionName}] rap for`, name);
+  logger.debug(`[raps/ens]: [${actionName}] rap for ${name}`);
 
   let gasLimit;
   const ensRegistrationRecords = formatRecordsForTransaction(records);
   try {
-    logger.sentry(
-      `[${actionName}] estimate gas`,
-      {
+    logger.debug(`[raps/ens]: [${actionName}] estimate gas`, {
+      data: {
         ...parameters,
+        type,
       },
-      type
-    );
+    });
 
     // when registering the ENS if we try to estimate gas for setting records
     // (MULTICALL || SET_TEXT) it's going to fail if we put the account address
     // since the account doesn't have the ENS yet
     const notUseOwnerAddress =
-      IS_TESTING !== 'true' &&
+      !IS_TEST &&
       mode === REGISTRATION_MODES.CREATE &&
       (type === ENSRegistrationTransactionType.MULTICALL || type === ENSRegistrationTransactionType.SET_TEXT);
 
@@ -344,8 +342,7 @@ const ensAction = async (
       type,
     });
   } catch (e) {
-    logger.sentry(`[${actionName}] Error estimating gas`);
-    captureException(e);
+    logger.error(new RainbowError(`[raps/ens]: [${actionName}] Error estimating gas: ${e}`));
     throw e;
   }
   let tx;
@@ -356,8 +353,11 @@ const ensAction = async (
     maxFeePerGas = gasParams.maxFeePerGas;
     maxPriorityFeePerGas = gasParams.maxPriorityFeePerGas;
 
-    logger.sentry(`[${actionName}] about to ${type}`, {
-      ...parameters,
+    logger.debug(`[raps/ens]: [${actionName}] about to ${type}`, {
+      data: {
+        ...parameters,
+        type,
+      },
     });
     const nonce = baseNonce ? baseNonce + index : null;
 
@@ -455,14 +455,14 @@ const ensAction = async (
         });
     }
   } catch (e) {
-    logger.sentry(`[${actionName}] Error executing`);
-    captureException(e);
+    logger.error(new RainbowError(`[raps/ens]: [${actionName}] Error executing: ${e}`));
     throw e;
   }
 
-  logger.log(`[${actionName}] response`, tx);
+  logger.debug(`[raps/ens]: [${actionName}] response`, { data: tx });
 
-  const newTransaction: NewTransaction = {
+  const newTransaction = {
+    chainId: ChainId.mainnet,
     data: tx.data,
     ensCommitRegistrationName: type === ENSRegistrationTransactionType.COMMIT ? name : undefined,
     ensRegistration: true,
@@ -478,15 +478,16 @@ const ensAction = async (
     },
     to: tx?.to,
     value: toHex(tx.value),
-    network: NetworkTypes.mainnet,
-    status: 'pending',
-  };
-  logger.log(`[${actionName}] adding new txn`, newTransaction);
+    network: Network.mainnet,
+    status: TransactionStatus.pending,
+  } satisfies NewTransaction;
+
+  logger.debug(`[raps/ens]: [${actionName}] adding new txn`, { data: newTransaction });
 
   addNewTransaction({
     address: ownerAddress,
     transaction: newTransaction,
-    network: Network.mainnet,
+    chainId: ChainId.mainnet,
   });
   return tx?.nonce;
 };
@@ -667,18 +668,20 @@ const executeAction = async (
   rapName: string,
   baseNonce?: number
 ): Promise<ENSRapActionResponse> => {
-  logger.log('[1 INNER] index', index);
+  logger.debug(`[raps/ens]: [${rapName}] 1 INNER index: ${index}`);
   const { type, parameters } = action;
   let nonce;
   try {
-    logger.log('[2 INNER] executing type', type);
+    logger.debug(`[raps/ens]: [${rapName}] 2 INNER executing type: ${type}`);
     const actionPromise = findENSActionByType(type);
-    nonce = await actionPromise(wallet, rap, index, parameters as RapENSActionParameters, baseNonce);
+    nonce = await performanceTracking.getState().executeFn({
+      fn: actionPromise,
+      screen: Screens.SEND_ENS,
+      operation: TimeToSignOperation.SignTransaction,
+    })(wallet, rap, index, parameters as RapENSActionParameters, baseNonce);
     return { baseNonce: nonce, errorMessage: null };
   } catch (error: any) {
-    logger.debug('Rap blew up', error);
-    logger.sentry('[3 INNER] error running action, code:', error?.code);
-    captureException(error);
+    logger.error(new RainbowError(`[raps/ens]: [${rapName}] Error executing action: ${action} ${error}`));
     analytics.track('Rap failed', {
       category: 'raps',
       failed_action: type,
@@ -687,7 +690,7 @@ const executeAction = async (
     // If the first action failed, return an error message
     if (index === 0) {
       const errorMessage = parseError(error);
-      logger.log('[4 INNER] displaying error message', errorMessage);
+      logger.debug(`[raps/ens]: [${rapName}] 4 INNER displaying error message ${errorMessage}`);
       return { baseNonce: null, errorMessage };
     }
     return { baseNonce: null, errorMessage: null };
@@ -700,7 +703,11 @@ export const executeENSRap = async (
   parameters: ENSActionParameters,
   callback: (success?: boolean, errorMessage?: string | null) => void
 ) => {
-  const rap = await createENSRapByType(type, parameters as ENSActionParameters);
+  const rap = await performanceTracking.getState().executeFn({
+    fn: createENSRapByType,
+    operation: TimeToSignOperation.CreateRap,
+    screen: Screens.SEND_ENS,
+  })(type, parameters as ENSActionParameters);
   const { actions } = rap;
   const rapName = getRapFullName(actions);
 
@@ -711,7 +718,7 @@ export const executeENSRap = async (
 
   let nonce = parameters?.nonce;
 
-  logger.log('[common - executing rap]: actions', actions);
+  logger.debug(`[raps/ens]: [${rapName}] actions`, { actions });
   if (actions.length) {
     const firstAction = actions[0];
     const { baseNonce, errorMessage } = await executeAction(firstAction, wallet, rap, 0, rapName, nonce);
@@ -733,7 +740,8 @@ export const executeENSRap = async (
     category: 'raps',
     label: rapName,
   });
-  logger.log('[common - executing rap] finished execute rap function');
+
+  logger.debug(`[raps/ens]: [${rapName}] finished execute rap function`);
 
   return { nonce };
 };

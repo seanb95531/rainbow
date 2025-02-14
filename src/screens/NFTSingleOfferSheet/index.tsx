@@ -27,7 +27,7 @@ import ConditionalWrap from 'conditional-wrap';
 import Routes from '@/navigation/routesNames';
 import { useLegacyNFTs } from '@/resources/nfts';
 import { useAccountSettings, useGas, useWallets } from '@/hooks';
-import { NewTransaction } from '@/entities';
+import { NewTransaction, TransactionDirection, TransactionStatus } from '@/entities';
 import { analyticsV2 } from '@/analytics';
 import { BigNumber } from '@ethersproject/bignumber';
 import { HoldToAuthorizeButton } from '@/components/buttons';
@@ -39,8 +39,7 @@ import { createWalletClient, http } from 'viem';
 
 import { RainbowError, logger } from '@/logger';
 import { useTheme } from '@/theme';
-import { Network } from '@/helpers';
-import { getNetworkObj } from '@/networks';
+import { Network, ChainId } from '@/state/backendNetworks/types';
 import { CardSize } from '@/components/unique-token/CardSize';
 import { queryClient } from '@/react-query';
 import { nftOffersQueryKey } from '@/resources/reservoir/nftOffersQuery';
@@ -53,6 +52,7 @@ import { getNextNonce } from '@/state/nonces';
 import { metadataPOSTClient } from '@/graphql';
 import { ethUnits } from '@/references';
 import { Transaction } from '@/graphql/__generated__/metadataPOST';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 const NFT_IMAGE_HEIGHT = 160;
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -94,10 +94,10 @@ export function NFTSingleOfferSheet() {
   } = useLegacyNFTs({ address: accountAddress });
 
   const { offer } = params as { offer: NftOffer };
-
+  const offerChainId = useBackendNetworksStore.getState().getChainsIdByName()[offer.network as Network];
   const { data: externalAsset } = useExternalToken({
     address: offer.paymentToken.address,
-    network: offer.network as Network,
+    chainId: offerChainId,
     currency: nativeCurrency,
   });
 
@@ -110,8 +110,7 @@ export function NFTSingleOfferSheet() {
 
   const insufficientEth = isSufficientGas === false && isValidGas;
 
-  const network = offer.network as Network;
-  const rainbowFeeAddress = getRainbowFeeAddress(network);
+  const rainbowFeeAddress = getRainbowFeeAddress(offerChainId);
   const rainbowFeeDecimal = (offer.grossAmount.decimal * RAINBOW_FEE_BIPS) / BIPS_TO_DECIMAL_RATIO;
   const feeParam = rainbowFeeAddress
     ? `${rainbowFeeAddress}:${BigNumber.from(offer.grossAmount.raw).mul(RAINBOW_FEE_BIPS).div(BIPS_TO_DECIMAL_RATIO).toString()}`
@@ -180,12 +179,11 @@ export function NFTSingleOfferSheet() {
 
   const estimateGas = useCallback(() => {
     try {
-      const networkObj = getNetworkObj(network);
       const signer = createWalletClient({
         // @ts-ignore
         account: accountAddress,
-        chain: networkObj,
-        transport: http(networkObj.rpc()),
+        chain: useBackendNetworksStore.getState().getDefaultChains()[offerChainId],
+        transport: http(useBackendNetworksStore.getState().getChainDefaultRpc(offerChainId)),
       });
       getClient()?.actions.acceptOffer({
         items: [
@@ -199,14 +197,14 @@ export function NFTSingleOfferSheet() {
               feesOnTop: [feeParam],
             }
           : undefined,
-        chainId: networkObj.id,
+        chainId: offerChainId,
         precheck: true,
         wallet: signer,
         onProgress: async (steps: Execute['steps']) => {
           let reservoirEstimate = 0;
           const txs: Transaction[] = [];
           const fallbackEstimate =
-            offer.network === Network.mainnet ? ethUnits.mainnet_nft_offer_gas_fee_fallback : ethUnits.l2_nft_offer_gas_fee_fallback;
+            offerChainId === ChainId.mainnet ? ethUnits.mainnet_nft_offer_gas_fee_fallback : ethUnits.l2_nft_offer_gas_fee_fallback;
           steps.forEach(step =>
             step.items?.forEach(item => {
               if (item?.data?.to && item?.data?.from && item?.data?.data) {
@@ -227,7 +225,7 @@ export function NFTSingleOfferSheet() {
           const txSimEstimate = parseInt(
             (
               await metadataPOSTClient.simulateTransactions({
-                chainId: networkObj.id,
+                chainId: offerChainId,
                 transactions: txs,
               })
             )?.simulateTransactions?.[0]?.gas?.estimate ?? '0x0',
@@ -241,23 +239,23 @@ export function NFTSingleOfferSheet() {
         },
       });
     } catch {
-      logger.error(new RainbowError('NFT Offer: Failed to estimate gas'));
+      logger.error(new RainbowError('[NFTSingleOfferSheet]: Failed to estimate gas'));
     }
-  }, [accountAddress, feeParam, network, offer, updateTxFee]);
+  }, [accountAddress, feeParam, offer.nft.contractAddress, offer.nft.tokenId, offerChainId, updateTxFee]);
 
   // estimate gas
   useEffect(() => {
     if (!isReadOnlyWallet && !isExpired) {
-      startPollingGasFees(network);
+      startPollingGasFees(offerChainId);
       estimateGas();
     }
     return () => {
       stopPollingGasFees();
     };
-  }, [estimateGas, isExpired, isReadOnlyWallet, network, startPollingGasFees, stopPollingGasFees, updateTxFee]);
+  }, [estimateGas, isExpired, isReadOnlyWallet, offerChainId, startPollingGasFees, stopPollingGasFees]);
 
   const acceptOffer = useCallback(async () => {
-    logger.info(`Initiating sale of NFT ${offer.nft.contractAddress}:${offer.nft.tokenId}`);
+    logger.debug(`[NFTSingleOfferSheet]: Initiating sale of NFT ${offer.nft.contractAddress}:${offer.nft.tokenId}`);
     const analyticsEventObject = {
       nft: {
         contractAddress: offer.nft.contractAddress,
@@ -281,13 +279,13 @@ export function NFTSingleOfferSheet() {
     const privateKey = await loadPrivateKey(accountAddress, false);
     // @ts-ignore
     const account = privateKeyToAccount(privateKey);
-    const networkObj = getNetworkObj(network);
+
     const signer = createWalletClient({
       account,
-      chain: networkObj,
-      transport: http(networkObj.rpc()),
+      chain: useBackendNetworksStore.getState().getDefaultChains()[offerChainId],
+      transport: http(useBackendNetworksStore.getState().getChainDefaultRpc(offerChainId)),
     });
-    const nonce = await getNextNonce({ address: accountAddress, network });
+    const nonce = await getNextNonce({ address: accountAddress, chainId: offerChainId });
     try {
       let errorMessage = '';
       let didComplete = false;
@@ -303,7 +301,7 @@ export function NFTSingleOfferSheet() {
               feesOnTop: [feeParam],
             }
           : undefined,
-        chainId: networkObj.id,
+        chainId: offerChainId,
         wallet: signer!,
         onProgress: (steps: Execute['steps']) => {
           setIsAccepting(true);
@@ -324,7 +322,8 @@ export function NFTSingleOfferSheet() {
                 };
                 if (step.id === 'sale') {
                   tx = {
-                    status: 'pending',
+                    status: TransactionStatus.pending,
+                    chainId: offerChainId,
                     to: item.data?.to,
                     from: item.data?.from,
                     hash: item.txHashes[0].txHash,
@@ -332,21 +331,23 @@ export function NFTSingleOfferSheet() {
                     nonce: item?.txHashes?.length > 1 ? nonce + 1 : nonce,
                     asset: {
                       ...offer.paymentToken,
+                      chainId: offerChainId,
                       network: offer.network as Network,
-                      uniqueId: getUniqueId(offer.paymentToken.address, offer.network as Network),
+                      uniqueId: getUniqueId(offer.paymentToken.address, offerChainId),
                     },
                     changes: [
                       {
-                        direction: 'out',
+                        direction: TransactionDirection.OUT,
                         asset,
                         value: 1,
                       },
                       {
-                        direction: 'in',
+                        direction: TransactionDirection.IN,
                         asset: {
                           ...offer.paymentToken,
                           network: offer.network as Network,
-                          uniqueId: getUniqueId(offer.paymentToken.address, offer.network as Network),
+                          chainId: offerChainId,
+                          uniqueId: getUniqueId(offer.paymentToken.address, offerChainId),
                         },
                         value: offer.grossAmount.raw,
                       },
@@ -355,7 +356,8 @@ export function NFTSingleOfferSheet() {
                   };
                 } else if (step.id === 'nft-approval') {
                   tx = {
-                    status: 'pending',
+                    status: TransactionStatus.pending,
+                    chainId: offerChainId,
                     to: item.data?.to,
                     from: item.data?.from,
                     hash: item.txHashes[0].txHash,
@@ -369,7 +371,7 @@ export function NFTSingleOfferSheet() {
                   addNewTransaction({
                     transaction: tx,
                     address: accountAddress,
-                    network: offer.network as Network,
+                    chainId: offerChainId,
                   });
                   txsRef.current.push(tx.hash);
                 }
@@ -392,7 +394,7 @@ export function NFTSingleOfferSheet() {
         }
       );
 
-      logger.info(`Completed sale of NFT ${offer.nft.contractAddress}:${offer.nft.tokenId}`);
+      logger.debug(`[NFTSingleOfferSheet]: Completed sale of NFT ${offer.nft.contractAddress}:${offer.nft.tokenId}`);
       analyticsV2.track(analyticsV2.event.nftOffersAcceptedOffer, {
         status: 'completed',
         ...analyticsEventObject,
@@ -402,7 +404,7 @@ export function NFTSingleOfferSheet() {
     } catch (e) {
       logger.error(
         new RainbowError(
-          `Error selling NFT ${offer.nft.contractAddress} #${offer.nft.tokenId} on marketplace ${offer.marketplace.name}: ${e}`
+          `[NFTSingleOfferSheet]: Error selling NFT ${offer.nft.contractAddress} #${offer.nft.tokenId} on marketplace ${offer.marketplace.name}: ${e}`
         )
       );
       analyticsV2.track(analyticsV2.event.nftOffersAcceptedOffer, {
@@ -421,13 +423,13 @@ export function NFTSingleOfferSheet() {
     } finally {
       setIsAccepting(false);
     }
-  }, [accountAddress, feeParam, navigate, network, nft, offer, rainbowFeeDecimal]);
+  }, [offer, rainbowFeeDecimal, accountAddress, offerChainId, feeParam, navigate, nft]);
 
   let buttonLabel = '';
   if (!isAccepting) {
     if (insufficientEth) {
       buttonLabel = lang.t('button.confirm_exchange.insufficient_token', {
-        tokenName: getNetworkObj(offer.network as Network).nativeCurrency.symbol,
+        tokenName: useBackendNetworksStore.getState().getChainsNativeAsset()[offerChainId].symbol,
       });
     } else {
       buttonLabel = i18n.t(i18n.l.nft_offers.single_offer_sheet.hold_to_sell);
@@ -521,11 +523,10 @@ export function NFTSingleOfferSheet() {
                       <RainbowCoinIcon
                         size={16}
                         icon={externalAsset?.icon_url}
-                        network={offer?.network as Network}
+                        chainId={offerChainId}
                         symbol={offer.paymentToken.symbol}
-                        theme={theme}
-                        colors={externalAsset?.colors}
-                        ignoreBadge
+                        color={externalAsset?.colors?.primary || externalAsset?.colors?.fallback || undefined}
+                        showBadge={false}
                       />
                       <Text color="label" align="right" size="17pt" weight="bold">
                         {listPrice} {offer.paymentToken.symbol}
@@ -559,11 +560,10 @@ export function NFTSingleOfferSheet() {
                       <RainbowCoinIcon
                         size={16}
                         icon={externalAsset?.icon_url}
-                        network={offer?.network as Network}
+                        chainId={offerChainId}
                         symbol={offer.paymentToken.symbol}
-                        theme={theme}
-                        colors={externalAsset?.colors}
-                        ignoreBadge
+                        color={externalAsset?.colors?.primary || externalAsset?.colors?.fallback || undefined}
+                        showBadge={false}
                       />
 
                       <Text color="labelSecondary" align="right" size="17pt" weight="medium">
@@ -647,11 +647,10 @@ export function NFTSingleOfferSheet() {
                       <RainbowCoinIcon
                         size={16}
                         icon={externalAsset?.icon_url}
-                        network={offer?.network as Network}
+                        chainId={offerChainId}
                         symbol={offer.paymentToken.symbol}
-                        theme={theme}
-                        colors={externalAsset?.colors}
-                        ignoreBadge
+                        color={externalAsset?.colors?.primary || externalAsset?.colors?.fallback || undefined}
+                        showBadge={false}
                       />
                       <Text color="label" align="right" size="17pt" weight="bold">
                         {netCrypto} {offer.paymentToken.symbol}
@@ -668,12 +667,10 @@ export function NFTSingleOfferSheet() {
               </Inset>
               {isReadOnlyWallet || isExpired ? (
                 <AccentColorProvider color={offer.nft.predominantColor || buttonColorFallback}>
-                  {/* @ts-ignore js component */}
                   <Box
                     as={ButtonPressAnimation}
                     background="accent"
                     height="46px"
-                    // @ts-ignore
                     disabled={isExpired}
                     width="full"
                     borderRadius={99}
@@ -718,14 +715,13 @@ export function NFTSingleOfferSheet() {
                     parentHorizontalPadding={28}
                     showBiometryIcon={!insufficientEth}
                   />
-                  {/* @ts-ignore */}
                   <GasSpeedButton
                     asset={{
                       color: offer.nft.predominantColor || buttonColorFallback,
                     }}
                     loading={!isGasReady}
                     horizontalPadding={0}
-                    currentNetwork={offer.network}
+                    chainId={offerChainId}
                     theme={theme.isDarkMode ? 'dark' : 'light'}
                   />
                 </>

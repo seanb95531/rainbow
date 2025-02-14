@@ -16,6 +16,7 @@
       "tab_balances": "Saldo",
       "tab_balances_empty_state": "Saldo",
       "tab_balances_tooltip": "Saldo Ethereum dan Token",
+      "tab_claimables": "Dapat Diklaim",
       "tab_collectibles": "Koleksi",
       "tab_interactions": "Interaksi",
       "tab_interactions_tooltip": "Interaksi Kontrak Cerdas",
@@ -24,6 +25,7 @@
       "tab_showcase": "Pameran",
       "tab_points": "Poin",
       "tab_positions": "Posisi",
+      "tab_rewards": "Hadiah",
       "tab_transactions": "Transaksi",
       "tab_transactions_tooltip": "Transaksi dan Transfer Token",
       "tab_uniquetokens": "Token Unik",
@@ -431,6 +433,39 @@
         "description": "Anda juga bisa menekan lama alamat\ndi atas untuk menyalinnya."
       }
     },
+    "check_identifier": {
+      "title": "Otentikasi Diperlukan",
+      "description": "Sepertinya Anda mungkin telah mengganti perangkat atau menginstal ulang Rainbow. Harap otentikasi sehingga kami dapat memvalidasi data keychain Anda masih dalam kondisi sehat.",
+      "action": "Otentikasi",
+      "dismiss": "Tutup",
+      "error_alert": {
+        "title": "Kesalahan Memvalidasi Keychain",
+        "message": "Kami mengalami kesalahan saat memvalidasi data keychain Anda. Harap coba lagi. Jika masalah berlanjut, harap hubungi dukungan.",
+        "contact_support": "Hubungi Dukungan",
+        "cancel": "Batal"
+      },
+      "failure_alert": {
+        "title": "Data Keychain Tidak Valid",
+        "message": "Kami tidak dapat memverifikasi integritas data keychain Anda. Harap pulihkan dompet Anda dan coba lagi. Jika masalah berlanjut, harap hubungi dukungan.",
+        "action": "Lanjutkan"
+      }
+    },
+    "claimables": {
+      "panel": {
+        "calculating_gas_fee": "Menghitung biaya gas...",
+        "amount_to_claim_on_network": "%{amount} untuk diklaim di %{network}",
+        "claim": "Klaim",
+        "claiming": "Mengklaim",
+        "claim_in_progress": "Klaim Sedang Berlangsung...",
+        "claimed": "Diklaim!",
+        "claiming_failed": "Klaim Gagal",
+        "insufficient_funds": "Dana Tidak Cukup",
+        "claim_amount": "Klaim %{amount}",
+        "done": "Selesai",
+        "try_again": "Coba Lagi",
+        "tokens_on_the_way": "Token dalam perjalanan!"
+      }
+    },
     "cloud": {
       "backup_success": "Dompet Anda telah berhasil dicadangkan!"
     },
@@ -468,7 +503,8 @@
       "clear_image_metadata_cache": "Hapus Cache Metadata Gambar",
       "clear_local_storage": "Hapus penyimpanan lokal",
       "clear_mmkv_storage": "Hapus penyimpanan MMKV",
-      "connect_to_hardhat": "Hubungkan ke hardhat",
+      "connect_to_anvil": "Hubungkan ke anvil",
+      "disconnect_to_anvil": "Putuskan hubungan dari anvil",
       "crash_app_render_error": "Aplikasi crash (kesalahan render)",
       "enable_testnets": "Aktifkan Testnets",
       "installing_update": "Menginstal pembaruan",
@@ -541,7 +577,8 @@
         "from_divider": "dari",
         "to_divider": "ke",
         "view_on": "Tampilkan di %{blockExplorerName}",
-        "view_on_etherscan": "Tampilkan di Etherscan"
+        "view_on_etherscan": "Tampilkan di Etherscan",
+        "copy_contract_address": "Salin Alamat Kontrak"
       },
       "all_networks": "Semua Jaringan",
       "filter_by_network": "Filter berdasarkan Jaringan",
@@ -577,7 +614,8 @@
       "price_impact": {
         "long_wait": {
           "title": "Menunggu lama",
-          "description": "Perkiraan %{time}"
+          "description": "Perkiraan %{time}",
+          "description_prefix": "Kira-kira."
         },
         "unknown_price": {
           "title": "Nilai Pasar Tidak Diketahui",
@@ -587,6 +625,7 @@
         "small_market": "Pasar Kecil",
         "small_market_try_smaller_amount": "Pasar kecil — coba jumlah yang lebih kecil",
         "you_are_losing": "Anda kehilangan %{priceImpact}",
+        "you_are_losing_prefix": "Anda kehilangan",
         "no_data": "Nilai Pasar Tidak Diketahui",
         "label": "Kemungkinan kerugian",
         "no_data_subtitle": "Jika Anda memutuskan untuk melanjutkan, pastikan Anda puas dengan jumlah yang dikutip"
@@ -687,6 +726,7 @@
         "flashbots_protect": "Pelindung Flashbots",
         "losing": "Kalah",
         "on": "On",
+        "off": "Mati",
         "price_impact": "Dampak harga",
         "price_row_per_token": "per",
         "slippage_message": "Ini adalah pasar kecil, jadi Anda mendapatkan harga yang buruk. Coba perdagangan yang lebih kecil!",
@@ -723,6 +763,16 @@
         "number_of_steps": "%{number} Langkah",
         "input_exchange_rate": "1 %{inputSymbol} untuk %{executionRate} %{outputSymbol}",
         "output_exchange_rate": "1 %{outputSymbol} untuk %{executionRate} %{inputSymbol}"
+      },
+      "swap_details_v2": {
+        "automatic": "Otomatis",
+        "degen_mode": "Mode Degen",
+        "degen_mode_description": "Lewati langkah ulasan untuk bertukar lebih cepat",
+        "maximum_sold": "Maksimum Dijual",
+        "minimum_received": "Minimum yang diterima",
+        "preferred_network": "Jaringan yang Disukai",
+        "rainbow_fee": "Termasuk biaya Rainbow",
+        "settings": "Pengaturan"
       },
       "token_index": {
         "get_token": "Dapatkan %{assetSymbol}",
@@ -823,6 +873,10 @@
         "title_plural": "Tersedia di %{length} Jaringan",
         "title_singular": "Tersedia di Jaringan %{network}"
       },
+      "default_network_explainer": {
+        "text": "%{chainName} adalah jaringan Layer 2 yang berjalan di atas Ethereum, memungkinkan transaksi yang lebih murah dan cepat sambil tetap mendapatkan manfaat dari keamanan dasar Ethereum.",
+        "title": "Apa itu %{chainName}?"
+      },
       "arbitrum": {
         "text": "Arbitrum adalah jaringan Layer 2 yang berjalan di atas Ethereum, memungkinkan transaksi yang lebih murah dan lebih cepat sambil tetap mendapatkan keuntungan dari keamanan dasar Ethereum.\n\nIni mengelompokkan banyak transaksi bersama dalam suatu \"roll up\" sebelum mengirimkannya ke bawah untuk tinggal secara permanen di Ethereum.",
         "title": "Apa itu Arbitrum?"
@@ -883,15 +937,19 @@
       },
       "avalanche": {
         "text": "Avalanche adalah sidechain, jaringan terpisah yang berjalan di samping Ethereum dan kompatibel dengannya.\n\nIni memungkinkan transaksi yang lebih murah dan cepat, tetapi tidak seperti jaringan Layer 2, Avalanche memiliki mekanisme keamanan dan konsensus sendiri yang berbeda dari Ethereum.",
-        "title": "Apa itu Avalanche"
+        "title": "Apa itu Avalanche?"
       },
       "degen": {
-        "text": "Degen Chain adalah jaringan Layer 3 yang berjalan di atas Arbitrum dan Ethereum, menawarkan transaksi yang sangat cepat dan murah yang dinominasikan dalam token komunitas Farcaster $degen.",
+        "text": "Degen Chain adalah jaringan Layer 3 yang berjalan di atas Arbitrum Orbit dan Ethereum.",
         "title": "Apa itu Degen Chain?"
       },
       "blast": {
         "text": "Blast adalah jaringan Layer 2 yang berjalan di atas Ethereum, memungkinkan transaksi yang lebih murah dan cepat sambil tetap mendapatkan manfaat dari keamanan dasar Ethereum.\n\nIni menggabungkan banyak transaksi bersama dalam \"roll up\" sebelum mengirimkannya untuk hidup secara permanen di Ethereum.",
         "title": "Apa itu Blast?"
+      },
+      "apechain": {
+        "text": "ApeChain adalah jaringan Layer 3 yang berjalan di atas Arbitrum Orbit dan Ethereum.\n\nIni secara signifikan meningkatkan utilitas ApeCoin, memfasilitasi ekonomi yang kuat dan dinamis yang didorong oleh $APE.",
+        "title": "Apa itu ApeChain?"
       },
       "zora": {
         "text": "Zora adalah Jaringan Layer 2 yang berjalan di atas Ethereum, memungkinkan transaksi yang lebih murah dan cepat sambil tetap mendapatkan keuntungan dari keamanan bawah Ethereum.\n\nIt mengemas banyak transaksi bersama dalam \"roll up\" sebelum mengirimkan mereka turun untuk hidup secara permanen di Ethereum.",
@@ -1030,14 +1088,17 @@
         "urgent": "Mendesak",
         "custom": "Kustom"
       },
-      "network_fee": "Biaya jaringan Est.",
+      "unable_to_determine_selected_gas": "Tidak dapat menentukan gas yang dipilih",
+      "network_fee": "Perk. Biaya Jaringan",
       "current_base_fee": "Biaya dasar saat ini",
       "max_base_fee": "Biaya dasar maksimum",
       "miner_tip": "Tip penambang",
+      "gas_price": "Harga Gas",
       "max_transaction_fee": "Biaya transaksi maksimum",
       "warning_separator": "·",
       "lower_than_suggested": "Rendah · mungkin terjebak",
       "higher_than_suggested": "Tinggi · membayar lebih",
+      "likely_to_fail": "Rendah · cenderung gagal",
       "max_base_fee_too_low_error": "Rendah · cenderung gagal",
       "tip_too_low_error": "Rendah · cenderung gagal",
       "alert_message_higher_miner_tip_needed": "Mengatur tip penambang yang lebih tinggi direkomendasikan untuk menghindari masalah.",
@@ -1286,10 +1347,20 @@
     "nfts": {
       "selling": "Menjual",
       "sort": {
+        "ABC": "Abjad",
         "abc": "Abjad",
+        "MOST_RECENT": "Baru-baru ini",
         "most_recent": "Terbaru",
-        "floor_price": "Harga Dasar"
-      }
+        "FLOOR_PRICE": "Harga Dasar",
+        "floor_price": "Harga Dasar",
+        "order": {
+          "asc": "Urutan menaik",
+          "desc": "Urutan menurun"
+        }
+      },
+      "empty": "Koleksi",
+      "collect_now": "Koleksi Sekarang",
+      "will_appear_here": "Koleksi Anda Akan Muncul di Sini"
     },
     "nft_offers": {
       "card": {
@@ -1357,13 +1428,16 @@
       },
       "claim": {
         "title": "Klaim poin Anda",
+        "title_rewards_line_1": "Selamat datang di",
+        "title_rewards_line_2": "Rainbow Rewards",
         "subtitle": "Poin telah ada. Cari tahu berapa banyak yang telah Anda dapatkan.",
+        "subtitle_rewards": "Dapatkan hadiah karena menggunakan Rainbow. Lakukan aktivitas onchain, dapatkan poin, dan dapatkan ETH.",
         "get_started": "Mulai",
         "use_referral_code": "Gunakan Kode Referral"
       },
       "referral": {
         "title": "Masukkan kode rujukan Anda",
-        "subtitle": "Masukkan kode referral di bawah untuk mengklaim hadiah bonus Anda.",
+        "subtitle": "Masukkan kode referensi di bawah untuk mengklaim bonus poin Anda.",
         "back": "Kembali",
         "error": "Terjadi kesalahan. Silakan memulai ulang aplikasi dan coba lagi.",
         "get_started": "Mulai",
@@ -1378,6 +1452,7 @@
         "share_link": "Bagikan Tautan",
         "next_drop": "Pengeluaran Berikutnya",
         "your_rank": "Peringkat Anda",
+        "no_change": "Tidak Ada Perubahan",
         "of_x": "Dari %{totalUsers}",
         "referrals": "Referal",
         "streak": "Streak",
@@ -1395,12 +1470,40 @@
         "today": "Hari Ini",
         "error": "Ups!\nSilakan tarik untuk memuat ulang.",
         "points": "poin",
+        "points_capitalized": "Poin",
         "referral_code_copied": "Kode rujukan telah disalin",
         "earn_points_for_referring": "Dapatkan poin ketika rujukanmu menukar $100 melalui Rainbow, plus dapatkan 10% dari poin yang diperoleh rujukanmu",
         "already_claimed_points": "Maaf! Kamu sudah mengklaim poinmu.",
         "now": "Sekarang",
         "unranked": "Tidak Terperingkat",
-        "points_to_rank": "750 poin untuk naik peringkat"
+        "points_to_rank": "750 poin untuk naik peringkat",
+        "ranking": "Ditempatkan #%{rank}",
+        "available_to_claim": "Tersedia untuk Diklaim",
+        "claim": "Klaim %{value}",
+        "choose_claim_network": "Pilih Jaringan Klaim",
+        "claim_on_network": "Klaim di %{network}",
+        "claimed_on_network": "Sudah Diklaim di %{network}",
+        "claiming_on_network": "Mengklaim di %{network}",
+        "error_claiming": "Klaim Gagal",
+        "free_to_claim": "Gratis untuk Diklaim",
+        "has_bridge_fee": "Ada Biaya Jembatan",
+        "claim_rewards": "Klaim Hadiah",
+        "earned_last_week": "Diperoleh Minggu Lalu",
+        "top_10_earner": "Top 10 Pendapatan",
+        "zero_points": "0 Poin",
+        "no_weekly_rank": "Tidak Ada Peringkat Mingguan",
+        "none": "Tidak ada",
+        "my_earnings": "Pendapatan Saya",
+        "claimed_earnings": "Pendapatan yang Diklaim",
+        "current_value": "Nilai Saat Ini",
+        "rainbow_users_have_earned": "Pengguna Rainbow telah mendapatkan",
+        "earn_eth_rewards": "Dapatkan Hadiah ETH",
+        "rewards_explainer": "Setiap minggu, penghasil poin mingguan tertinggi akan menerima sebagian dari pendapatan onchain Rainbow. Kumpulkan poin dengan menukar atau bertransaksi di Rainbow, menggunakan dapps, atau merujuk teman.",
+        "my_points": "Poin Saya",
+        "refer_friends": "Rujukkan Teman",
+        "try_again": "Coba Lagi",
+        "bridge_error": "Keberhasilan Sebagian",
+        "bridge_error_explainer": "Hadiah Anda berhasil diklaim di Optimism, tetapi transfer ke %{network} gagal. Jika Anda mau, Anda bisa menjembatani hadiah Anda secara manual menggunakan fitur Swap."
       },
       "console": {
         "claim_bonus_paragraph": "Anda akan mendapatkan tambahan 100 poin setelah Anda menukar minimal $100 melalui Rainbow",
@@ -1774,10 +1877,17 @@
       }
     },
     "positions": {
+      "lp_range_status": {
+        "full_range": "Kisaran Penuh",
+        "out_of_range": "Di Luar Jangkauan",
+        "in_range": "Dalam Jangkauan"
+      },
       "open_dapp": "Buka 􀮶",
       "deposits": "Deposit",
       "borrows": "Meminjam",
-      "rewards": "Hadiah"
+      "stakes": "Disimpan",
+      "rewards": "Hadiah",
+      "pools": "Kolam"
     },
     "savings": {
       "deposit": "Deposit",
@@ -1916,9 +2026,33 @@
       "too_many_signup_request": "Terlalu banyak permintaan pendaftaran, silakan coba lagi nanti"
     },
     "swap": {
+      "actions": {
+        "hold_to_swap": "Tahan untuk Tukar",
+        "hold_to_bridge": "Tahan untuk Jembatan",
+        "save": "Simpan",
+        "enter_amount": "Masukkan Jumlah",
+        "review": "Tinjau",
+        "fetching_prices": "Mengambil Data",
+        "swapping": "Menukar",
+        "select_token": "Pilih Token",
+        "insufficient_funds": "Dana Tidak Cukup",
+        "insufficient": "Kurangnya",
+        "quote_error": "Kesalahan Kutipan"
+      },
       "aggregators": {
         "rainbow": "Rainbow"
       },
+      "bridging": "Membuat Jembatan",
+      "swapping": "Menukar",
+      "max": "Maks",
+      "select": "Pilih",
+      "token_to_get": "Token untuk Dapatkan",
+      "token_to_swap": "Token untuk Tukar",
+      "no_balance": "Tidak Ada Saldo",
+      "find_a_token_to_buy": "Cari token untuk beli",
+      "search_your_tokens": "Cari token Anda",
+      "error_executing_swap": "Kesalahan saat melakukan swap",
+      "flashbots_protection": "Perlindungan Flashbots",
       "tokens_input": {
         "tokens": "Token",
         "sort": "Urutkan",
@@ -1945,6 +2079,7 @@
       },
       "loading": "Memuat...",
       "modal_types": {
+        "bridge": "Jembatan",
         "confirm": "Konfirmasi",
         "deposit": "Deposit",
         "receive": "Terima",
@@ -1976,6 +2111,8 @@
     },
     "token_search": {
       "section_header": {
+        "recent": "Baru-baru ini",
+        "popular": "Populer di Rainbow",
         "favorites": "Favorit",
         "bridge": "Jembatan",
         "verified": "Terverifikasi",
@@ -2018,9 +2155,9 @@
           "failed": "Gagal Mengirim"
         },
         "receive": {
-          "pending": "",
+          "pending": "Menerima",
           "confirmed": "Diterima",
-          "failed": ""
+          "failed": "Terima Gagal"
         },
         "withdraw": {
           "pending": "Menarik",
@@ -2404,7 +2541,7 @@
       "balance_title": "Saldo",
       "buy": "Beli",
       "change_wallet": {
-        "no_balance": "Tidak Ada Saldo",
+        "loading_balance": "Memuat Saldo...",
         "balance_eth": "%{balanceEth} ETH",
         "watching": "Menonton",
         "ledger": "Ledger"
@@ -2652,6 +2789,8 @@
       }
     },
     "walletconnect": {
+      "connecting": "Menghubungkan",
+      "loading": "Memuat",
       "requests": "Permintaan",
       "wants_to_connect": "ingin terhubung ke dompet Anda",
       "wants_to_connect_to_network": "ingin terhubung ke jaringan %{network}",
@@ -2745,6 +2884,7 @@
             "unavailable_personal_sign": "Simulasi untuk tanda pribadi belum didukung",
             "unavailable_zora_network": "Simulasi di Zora belum didukung",
             "failed_to_simulate": "Simulasi gagal, yang menunjukkan bahwa transaksi Anda kemungkinan akan gagal. Ini mungkin masalah dengan aplikasi yang Anda gunakan.",
+            "tx_api_error": "Kami tidak dapat menentukan apakah transaksi Anda akan berhasil atau gagal. Lanjutkan dengan hati-hati.",
             "warning": "Tidak ada perilaku jahat yang terdeteksi, namun transaksi ini memiliki karakteristik yang mungkin berisiko bagi dompet Anda.",
             "malicious": "Menandatangani transaksi ini bisa mengakibatkan kehilangan akses ke seluruh isi dompet Anda."
           },
@@ -2849,6 +2989,8 @@
         "forward": "Maju",
         "back": "Kembali"
       }
-    }
+    },
+    "copy": "Salin",
+    "paste": "Tempel"
   }
 }

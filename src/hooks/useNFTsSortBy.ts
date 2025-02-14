@@ -1,36 +1,27 @@
-import { useCallback } from 'react';
-import { MMKV, useMMKVString } from 'react-native-mmkv';
+import { NftCollectionSortCriterion, SortDirection } from '@/graphql/__generated__/arc';
+import { useMMKVString } from 'react-native-mmkv';
 import useAccountSettings from './useAccountSettings';
 
-const mmkv = new MMKV();
 const getStorageKey = (accountAddress: string) => `nfts-sort-${accountAddress}`;
 
-export enum CollectibleSortByOptions {
-  MOST_RECENT = 'most_recent',
-  ABC = 'abc',
-  FLOOR_PRICE = 'floor_price',
-}
-
-export const getNftSortForAddress = (accountAddress: string) => {
-  mmkv.getString(getStorageKey(accountAddress));
+export const parseNftSort = (s: string | undefined) => {
+  const [sortBy = NftCollectionSortCriterion.MostRecent, sortDirection = SortDirection.Desc] = (s?.split('|') || []) as [
+    sortBy?: NftCollectionSortCriterion,
+    sortDirection?: SortDirection,
+  ];
+  return [sortBy, sortDirection] as const;
 };
 
-export default function useNftSort(): {
-  nftSort: CollectibleSortByOptions;
-  updateNFTSort: (sortBy: CollectibleSortByOptions) => void;
-} {
-  const { accountAddress } = useAccountSettings();
-  const [nftSort, setNftSort] = useMMKVString(getStorageKey(accountAddress));
+export type NftSort = `${NftCollectionSortCriterion}|${SortDirection}`;
 
-  const updateNFTSort = useCallback(
-    (sortBy: CollectibleSortByOptions) => {
-      setNftSort(sortBy);
-    },
-    [setNftSort]
-  );
+export function useNftSort() {
+  const { accountAddress } = useAccountSettings();
+  const [nftSortData, setNftSortData] = useMMKVString(getStorageKey(accountAddress));
+  const [sortBy, sortDirection] = parseNftSort(nftSortData);
 
   return {
-    updateNFTSort,
-    nftSort: (nftSort as CollectibleSortByOptions) || CollectibleSortByOptions.MOST_RECENT,
+    updateNFTSort: (nftSort: NftSort) => setNftSortData(nftSort),
+    nftSort: sortBy,
+    nftSortDirection: sortDirection,
   };
 }

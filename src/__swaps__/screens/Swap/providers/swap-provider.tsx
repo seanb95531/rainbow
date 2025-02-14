@@ -1,12 +1,12 @@
 // @refresh
-import React, { ReactNode, createContext, useCallback, useContext, useEffect, useRef } from 'react';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { InteractionManager, NativeModules, StyleProp, TextInput, TextStyle } from 'react-native';
 import {
   AnimatedRef,
   DerivedValue,
-  SharedValue,
   runOnJS,
   runOnUI,
+  SharedValue,
   useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
@@ -14,55 +14,71 @@ import {
   useSharedValue,
 } from 'react-native-reanimated';
 
-import { equalWorklet, lessThanOrEqualToWorklet } from '@/__swaps__/safe-math/SafeMath';
-import { INITIAL_SLIDER_POSITION, SLIDER_COLLAPSED_HEIGHT, SLIDER_HEIGHT, SLIDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
+import { divWorklet, equalWorklet, lessThanOrEqualToWorklet, mulWorklet, sumWorklet } from '@/safe-math/SafeMath';
+import { SLIDER_COLLAPSED_HEIGHT, SLIDER_HEIGHT, SLIDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
 import { useAnimatedSwapStyles } from '@/__swaps__/screens/Swap/hooks/useAnimatedSwapStyles';
 import { useSwapInputsController } from '@/__swaps__/screens/Swap/hooks/useSwapInputsController';
 import { NavigationSteps, useSwapNavigation } from '@/__swaps__/screens/Swap/hooks/useSwapNavigation';
 import { useSwapSettings } from '@/__swaps__/screens/Swap/hooks/useSwapSettings';
 import { useSwapTextStyles } from '@/__swaps__/screens/Swap/hooks/useSwapTextStyles';
 import { SwapWarningType, useSwapWarning } from '@/__swaps__/screens/Swap/hooks/useSwapWarning';
-import { userAssetsQueryKey as swapsUserAssetsQueryKey } from '@/__swaps__/screens/Swap/resources/assets/userAssets';
+import { userAssetsQueryKey } from '@/__swaps__/screens/Swap/resources/assets/userAssets';
 import { AddressOrEth, ExtendedAnimatedAssetWithColors, ParsedSearchAsset } from '@/__swaps__/types/assets';
-import { ChainId } from '@/__swaps__/types/chains';
+import { ChainId } from '@/state/backendNetworks/types';
 import { SwapAssetType, inputKeys } from '@/__swaps__/types/swap';
-import { isUnwrapEthWorklet, isWrapEthWorklet, parseAssetAndExtend } from '@/__swaps__/utils/swaps';
+import { clamp, parseAssetAndExtend } from '@/__swaps__/utils/swaps';
 import { analyticsV2 } from '@/analytics';
 import { LegacyTransactionGasParamAmounts, TransactionGasParamAmounts } from '@/entities';
-import { getFlashbotsProvider, getIsHardhatConnected, getProviderForNetwork, isHardHat } from '@/handlers/web3';
+import { getProvider } from '@/handlers/web3';
 import { WrappedAlert as Alert } from '@/helpers/alert';
 import { useAccountSettings } from '@/hooks';
+import { useAnimatedInterval } from '@/hooks/reanimated/useAnimatedInterval';
 import * as i18n from '@/languages';
-import { RainbowError, logger } from '@/logger';
+import { logger, RainbowError } from '@/logger';
 import { loadWallet } from '@/model/wallet';
 import { Navigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
-import { getNetworkObj } from '@/networks';
 import { walletExecuteRap } from '@/raps/execute';
 import { QuoteTypeMap, RapSwapActionParameters } from '@/raps/references';
 import { queryClient } from '@/react-query';
-import { userAssetsQueryKey } from '@/resources/assets/UserAssetsQuery';
 import { userAssetsStore } from '@/state/assets/userAssets';
 import { swapsStore } from '@/state/swaps/swapsStore';
-import { ethereumUtils, haptics } from '@/utils';
-import { CrosschainQuote, Quote, QuoteError } from '@rainbow-me/swaps';
+import { getNextNonce } from '@/state/nonces';
 
-import { Address } from 'viem';
+import { haptics } from '@/utils';
+import { CrosschainQuote, Quote, QuoteError, SwapType } from '@rainbow-me/swaps';
+
+import { IS_IOS } from '@/env';
 import { clearCustomGasSettings } from '../hooks/useCustomGas';
-import { getGasSettingsBySpeed, getSelectedGas, getSelectedGasSpeed } from '../hooks/useSelectedGas';
+import { getGasSettingsBySpeed, getSelectedGas } from '../hooks/useSelectedGas';
 import { useSwapOutputQuotesDisabled } from '../hooks/useSwapOutputQuotesDisabled';
 import { SyncGasStateToSharedValues, SyncQuoteSharedValuesToState } from './SyncSwapStateAndSharedValues';
-import { IS_IOS } from '@/env';
+import { performanceTracking, Screens, TimeToSignOperation } from '@/state/performance/performance';
+import { useConnectedToAnvilStore } from '@/state/connectedToAnvil';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { getSwapsNavigationParams } from '../navigateToSwaps';
+import { LedgerSigner } from '@/handlers/LedgerSigner';
+import showWalletErrorAlert from '@/helpers/support';
 
 const swapping = i18n.t(i18n.l.swap.actions.swapping);
-const tapToSwap = i18n.t(i18n.l.swap.actions.tap_to_swap);
-const save = i18n.t(i18n.l.swap.actions.save);
+const holdToSwap = i18n.t(i18n.l.swap.actions.hold_to_swap);
+const holdToBridge = i18n.t(i18n.l.swap.actions.hold_to_bridge);
+const done = i18n.t(i18n.l.button.done);
 const enterAmount = i18n.t(i18n.l.swap.actions.enter_amount);
 const review = i18n.t(i18n.l.swap.actions.review);
 const fetchingPrices = i18n.t(i18n.l.swap.actions.fetching_prices);
 const selectToken = i18n.t(i18n.l.swap.actions.select_token);
 const insufficientFunds = i18n.t(i18n.l.swap.actions.insufficient_funds);
+const insufficient = i18n.t(i18n.l.swap.actions.insufficient);
 const quoteError = i18n.t(i18n.l.swap.actions.quote_error);
+
+type ConfirmButtonProps = {
+  label: string;
+  icon?: string;
+  disabled?: boolean;
+  opacity?: number;
+  type: 'hold' | 'tap';
+};
 
 interface SwapContextType {
   isFetching: SharedValue<boolean>;
@@ -93,6 +109,7 @@ interface SwapContextType {
 
   quote: SharedValue<Quote | CrosschainQuote | QuoteError | null>;
   executeSwap: () => void;
+  quoteFetchingInterval: ReturnType<typeof useAnimatedInterval>;
 
   outputQuotesAreDisabled: DerivedValue<boolean>;
   swapInfo: DerivedValue<{
@@ -107,14 +124,7 @@ interface SwapContextType {
   SwapNavigation: ReturnType<typeof useSwapNavigation>;
   SwapWarning: ReturnType<typeof useSwapWarning>;
 
-  confirmButtonProps: Readonly<
-    SharedValue<{
-      label: string;
-      icon?: string;
-      disabled?: boolean;
-      opacity?: number;
-    }>
-  >;
+  confirmButtonProps: DerivedValue<ConfirmButtonProps>;
   confirmButtonIconStyle: StyleProp<TextStyle>;
 
   hasEnoughFundsForGas: SharedValue<boolean | undefined>;
@@ -126,8 +136,24 @@ interface SwapProviderProps {
   children: ReactNode;
 }
 
+const getInitialSliderXPosition = ({
+  inputAmount,
+  maxSwappableAmount,
+}: {
+  inputAmount: string | undefined;
+  maxSwappableAmount: string | undefined;
+}) => {
+  if (inputAmount && maxSwappableAmount) {
+    return clamp(+mulWorklet(divWorklet(inputAmount, maxSwappableAmount), SLIDER_WIDTH), 0, SLIDER_WIDTH);
+  }
+  return SLIDER_WIDTH * swapsStore.getState().percentageToSell;
+};
+
 export const SwapProvider = ({ children }: SwapProviderProps) => {
   const { nativeCurrency } = useAccountSettings();
+
+  const [nativeChainAssets] = useState(useBackendNetworksStore.getState().getChainsNativeAsset());
+  const initialValues = getSwapsNavigationParams();
 
   const isFetching = useSharedValue(false);
   const isQuoteStale = useSharedValue(0); // TODO: Convert this to a boolean
@@ -136,17 +162,22 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
   const inputSearchRef = useAnimatedRef<TextInput>();
   const outputSearchRef = useAnimatedRef<TextInput>();
 
-  const sliderXPosition = useSharedValue(SLIDER_WIDTH * INITIAL_SLIDER_POSITION);
-  const sliderPressProgress = useSharedValue(SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT);
+  const lastTypedInput = useSharedValue<inputKeys>(initialValues.lastTypedInput);
+  const focusedInput = useSharedValue<inputKeys>(initialValues.focusedInput);
 
-  const lastTypedInput = useSharedValue<inputKeys>('inputAmount');
-  const focusedInput = useSharedValue<inputKeys>('inputAmount');
-
-  const initialSelectedInputAsset = parseAssetAndExtend({ asset: swapsStore.getState().inputAsset });
-  const initialSelectedOutputAsset = parseAssetAndExtend({ asset: swapsStore.getState().outputAsset });
+  const initialSelectedInputAsset = parseAssetAndExtend({ asset: initialValues.inputAsset });
+  const initialSelectedOutputAsset = parseAssetAndExtend({ asset: initialValues.outputAsset });
 
   const internalSelectedInputAsset = useSharedValue<ExtendedAnimatedAssetWithColors | null>(initialSelectedInputAsset);
   const internalSelectedOutputAsset = useSharedValue<ExtendedAnimatedAssetWithColors | null>(initialSelectedOutputAsset);
+
+  const sliderXPosition = useSharedValue(
+    getInitialSliderXPosition({
+      inputAmount: initialValues.inputAmount,
+      maxSwappableAmount: initialSelectedInputAsset?.maxSwappableAmount,
+    })
+  );
+  const sliderPressProgress = useSharedValue(SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT);
 
   const selectedOutputChainId = useSharedValue<ChainId>(initialSelectedInputAsset?.chainId || ChainId.mainnet);
   const quote = useSharedValue<Quote | CrosschainQuote | QuoteError | null>(null);
@@ -158,22 +189,28 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
   );
   const configProgress = useSharedValue<NavigationSteps>(NavigationSteps.INPUT_ELEMENT_FOCUSED);
 
-  const SwapSettings = useSwapSettings({
-    inputAsset: internalSelectedInputAsset,
-  });
+  const slippage = useSharedValue(initialValues.slippage);
+
+  const hasEnoughFundsForGas = useSharedValue<boolean | undefined>(undefined);
 
   const SwapInputController = useSwapInputsController({
     focusedInput,
     lastTypedInput,
     inputProgress,
     outputProgress,
-    initialSelectedInputAsset,
     internalSelectedInputAsset,
     internalSelectedOutputAsset,
     isFetching,
     isQuoteStale,
     sliderXPosition,
+    slippage,
     quote,
+    initialValues,
+  });
+
+  const SwapSettings = useSwapSettings({
+    debouncedFetchQuote: SwapInputController.debouncedFetchQuote,
+    slippage,
   });
 
   const getNonceAndPerformSwap = async ({
@@ -187,14 +224,15 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
       const NotificationManager = IS_IOS ? NativeModules.NotificationManager : null;
       NotificationManager?.postNotification('rapInProgress');
 
-      const network = ethereumUtils.getNetworkFromChainId(parameters.chainId);
-      const provider =
-        parameters.flashbots && getNetworkObj(network).features.flashbots ? await getFlashbotsProvider() : getProviderForNetwork(network);
-      const providerUrl = provider?.connection?.url;
-      const connectedToHardhat = !!providerUrl && isHardHat(providerUrl);
+      const provider = getProvider({ chainId: parameters.chainId });
+      const connectedToAnvil = useConnectedToAnvilStore.getState().connectedToAnvil;
 
       const isBridge = swapsStore.getState().inputAsset?.mainnetAddress === swapsStore.getState().outputAsset?.mainnetAddress;
-      const slippage = swapsStore.getState().slippage;
+      const isDegenModeEnabled = swapsStore.getState().degenMode;
+      const isSwappingToPopularAsset = swapsStore.getState().outputAsset?.sectionId === 'popular';
+      const lastNavigatedTrendingToken = swapsStore.getState().lastNavigatedTrendingToken;
+      const isSwappingToTrendingAsset =
+        lastNavigatedTrendingToken === parameters.assetToBuy.uniqueId || lastNavigatedTrendingToken === parameters.assetToSell.uniqueId;
 
       const selectedGas = getSelectedGas(parameters.chainId);
       if (!selectedGas) {
@@ -203,15 +241,35 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         return;
       }
 
-      const wallet = await loadWallet(parameters.quote.from, false, provider);
+      const wallet = await performanceTracking.getState().executeFn({
+        fn: loadWallet,
+        screen: Screens.SWAPS,
+        operation: TimeToSignOperation.KeychainRead,
+        metadata: {
+          degenMode: isDegenModeEnabled,
+        },
+      })({
+        address: parameters.quote.from,
+        showErrorIfNotLoaded: false,
+        provider,
+        timeTracking: {
+          screen: Screens.SWAPS,
+          operation: TimeToSignOperation.Authentication,
+          metadata: {
+            degenMode: isDegenModeEnabled,
+          },
+        },
+      });
+      const isHardwareWallet = wallet instanceof LedgerSigner;
+
       if (!wallet) {
         isSwapping.value = false;
         haptics.notificationError();
+        showWalletErrorAlert();
         return;
       }
 
       const gasFeeParamsBySpeed = getGasSettingsBySpeed(parameters.chainId);
-      const selectedGasSpeed = getSelectedGasSpeed(parameters.chainId);
 
       let gasParams: TransactionGasParamAmounts | LegacyTransactionGasParamAmounts = {} as
         | TransactionGasParamAmounts
@@ -219,7 +277,7 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
 
       if (selectedGas.isEIP1559) {
         gasParams = {
-          maxFeePerGas: selectedGas.maxBaseFee,
+          maxFeePerGas: sumWorklet(selectedGas.maxBaseFee, selectedGas.maxPriorityFee),
           maxPriorityFeePerGas: selectedGas.maxPriorityFee,
         };
       } else {
@@ -228,9 +286,19 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         };
       }
 
-      const chainId = getIsHardhatConnected() ? ChainId.hardhat : parameters.chainId;
-      const { errorMessage } = await walletExecuteRap(wallet, type, {
+      const chainId = connectedToAnvil ? ChainId.anvil : parameters.chainId;
+      const nonce = await getNextNonce({ address: parameters.quote.from, chainId });
+
+      const { errorMessage } = await performanceTracking.getState().executeFn({
+        fn: walletExecuteRap,
+        screen: Screens.SWAPS,
+        operation: TimeToSignOperation.SignTransaction,
+        metadata: {
+          degenMode: isDegenModeEnabled,
+        },
+      })(wallet, type, {
         ...parameters,
+        nonce,
         chainId,
         gasParams,
         // @ts-expect-error - collision between old gas types and new
@@ -242,16 +310,27 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         SwapInputController.quoteFetchingInterval.start();
 
         analyticsV2.track(analyticsV2.event.swapsFailed, {
-          createdAt: Date.now(),
           type,
-          parameters,
-          selectedGas,
-          selectedGasSpeed,
-          slippage,
-          bridge: isBridge,
+          isBridge: isBridge,
+          inputAssetSymbol: internalSelectedInputAsset.value?.symbol || '',
+          inputAssetName: internalSelectedInputAsset.value?.name || '',
+          inputAssetAddress: internalSelectedInputAsset.value?.address as AddressOrEth,
+          inputAssetChainId: internalSelectedInputAsset.value?.chainId || ChainId.mainnet,
+          inputAssetAmount: parameters.quote.sellAmount as number,
+          outputAssetSymbol: internalSelectedOutputAsset.value?.symbol || '',
+          outputAssetName: internalSelectedOutputAsset.value?.name || '',
+          outputAssetAddress: internalSelectedOutputAsset.value?.address as AddressOrEth,
+          outputAssetChainId: internalSelectedOutputAsset.value?.chainId || ChainId.mainnet,
+          outputAssetAmount: parameters.quote.buyAmount as number,
+          mainnetAddress: (parameters.assetToBuy.chainId === ChainId.mainnet
+            ? parameters.assetToBuy.address
+            : parameters.assetToSell.mainnetAddress) as AddressOrEth,
+          tradeAmountUSD: parameters.quote.tradeAmountUSD,
+          degenMode: isDegenModeEnabled,
+          isSwappingToPopularAsset,
+          isSwappingToTrendingAsset,
           errorMessage,
-          inputNativeValue: SwapInputController.inputValues.value.inputNativeValue,
-          outputNativeValue: SwapInputController.inputValues.value.outputNativeValue,
+          isHardwareWallet,
         });
 
         if (errorMessage !== 'handled') {
@@ -262,39 +341,60 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         }
       }
 
-      queryClient.invalidateQueries([
-        // old user assets invalidation (will cause a re-fetch)
-        {
-          queryKey: userAssetsQueryKey({
-            address: parameters.quote.from,
-            currency: nativeCurrency,
-            connectedToHardhat,
-          }),
-        },
-        // new swaps user assets invalidations
-        {
-          queryKey: swapsUserAssetsQueryKey({
-            address: parameters.quote.from as Address,
-            currency: nativeCurrency,
-            testnetMode: !!connectedToHardhat,
-          }),
-        },
-      ]);
+      queryClient.invalidateQueries(
+        userAssetsQueryKey({
+          address: parameters.quote.from,
+          currency: nativeCurrency,
+          testnetMode: connectedToAnvil,
+        })
+      );
 
+      swapsStore.getState().addRecentSwap(parameters.assetToBuy as ExtendedAnimatedAssetWithColors);
       clearCustomGasSettings(chainId);
       NotificationManager?.postNotification('rapCompleted');
-      Navigation.handleAction(Routes.PROFILE_SCREEN, {});
+      performanceTracking.getState().executeFn({
+        fn: () => {
+          const { routes, index } = Navigation.getState();
+          const activeRoute = Navigation.getActiveRoute();
+          if (
+            index === 0 ||
+            routes[index - 1].name === Routes.EXPANDED_ASSET_SHEET_V2 ||
+            activeRoute.name === Routes.PAIR_HARDWARE_WALLET_AGAIN_SHEET
+          ) {
+            Navigation.handleAction(Routes.WALLET_SCREEN, {});
+          } else {
+            Navigation.goBack();
+          }
+        },
+        screen: Screens.SWAPS,
+        operation: TimeToSignOperation.SheetDismissal,
+        endOfOperation: true,
+        metadata: {
+          degenMode: isDegenModeEnabled,
+        },
+      })();
 
       analyticsV2.track(analyticsV2.event.swapsSubmitted, {
-        createdAt: Date.now(),
         type,
-        parameters,
-        selectedGas,
-        selectedGasSpeed,
-        slippage,
-        bridge: isBridge,
-        inputNativeValue: SwapInputController.inputValues.value.inputNativeValue,
-        outputNativeValue: SwapInputController.inputValues.value.outputNativeValue,
+        isBridge: isBridge,
+        inputAssetSymbol: internalSelectedInputAsset.value?.symbol || '',
+        inputAssetName: internalSelectedInputAsset.value?.name || '',
+        inputAssetAddress: internalSelectedInputAsset.value?.address as AddressOrEth,
+        inputAssetChainId: internalSelectedInputAsset.value?.chainId || ChainId.mainnet,
+        inputAssetAmount: parameters.quote.sellAmount as number,
+        outputAssetSymbol: internalSelectedOutputAsset.value?.symbol || '',
+        outputAssetName: internalSelectedOutputAsset.value?.name || '',
+        outputAssetAddress: internalSelectedOutputAsset.value?.address as AddressOrEth,
+        outputAssetChainId: internalSelectedOutputAsset.value?.chainId || ChainId.mainnet,
+        outputAssetAmount: parameters.quote.buyAmount as number,
+        mainnetAddress: (parameters.assetToBuy.chainId === ChainId.mainnet
+          ? parameters.assetToBuy.address
+          : parameters.assetToSell.mainnetAddress) as AddressOrEth,
+        tradeAmountUSD: parameters.quote.tradeAmountUSD,
+        degenMode: isDegenModeEnabled,
+        isSwappingToPopularAsset,
+        isSwappingToTrendingAsset,
+        isHardwareWallet,
       });
     } catch (error) {
       isSwapping.value = false;
@@ -308,112 +408,59 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         },
       });
     }
-  };
 
-  const executeSwap = () => {
-    'worklet';
-
-    if (configProgress.value !== NavigationSteps.SHOW_REVIEW) return;
-
-    const inputAsset = internalSelectedInputAsset.value;
-    const outputAsset = internalSelectedOutputAsset.value;
-    const q = quote.value;
-
-    // TODO: What other checks do we need here?
-    if (isSwapping.value || !inputAsset || !outputAsset || !q || (q as QuoteError)?.error) {
-      return;
-    }
-
-    isSwapping.value = true;
-    SwapInputController.quoteFetchingInterval.stop();
-
-    const type = inputAsset.chainId !== outputAsset.chainId ? 'crosschainSwap' : 'swap';
-    const quoteData = q as QuoteTypeMap[typeof type];
-    const flashbots = (SwapSettings.flashbots.value && inputAsset.chainId === ChainId.mainnet) ?? false;
-
-    const isNativeWrapOrUnwrap =
-      isWrapEthWorklet({
-        buyTokenAddress: quoteData.buyTokenAddress,
-        sellTokenAddress: quoteData.sellTokenAddress,
-        chainId: inputAsset.chainId,
-      }) ||
-      isUnwrapEthWorklet({
-        buyTokenAddress: quoteData.buyTokenAddress,
-        sellTokenAddress: quoteData.sellTokenAddress,
-        chainId: inputAsset.chainId,
-      });
-
-    // Do not deleeeet the comment below 😤
-    // About to get quote
-    const parameters: Omit<RapSwapActionParameters<typeof type>, 'gasParams' | 'gasFeeParamsBySpeed' | 'selectedGasFee'> = {
-      sellAmount: quoteData.sellAmount?.toString(),
-      buyAmount: quoteData.buyAmount?.toString(),
-      chainId: inputAsset.chainId,
-      assetToSell: inputAsset,
-      assetToBuy: outputAsset,
-      quote: {
-        ...quoteData,
-        buyAmountDisplay: isNativeWrapOrUnwrap ? quoteData.buyAmount : quoteData.buyAmountDisplay,
-        sellAmountDisplay: isNativeWrapOrUnwrap ? quoteData.sellAmount : quoteData.sellAmountDisplay,
-        feeInEth: isNativeWrapOrUnwrap ? '0' : quoteData.feeInEth,
-        fromChainId: inputAsset.chainId,
-        toChainId: outputAsset.chainId,
-      },
-      flashbots,
-    };
-
-    runOnJS(getNonceAndPerformSwap)({
-      type,
-      parameters,
+    // reset the last navigated trending token after a swap has taken place
+    swapsStore.setState({
+      lastNavigatedTrendingToken: undefined,
     });
   };
 
-  const SwapTextStyles = useSwapTextStyles({
-    inputMethod: SwapInputController.inputMethod,
-    inputValues: SwapInputController.inputValues,
-    internalSelectedInputAsset,
-    internalSelectedOutputAsset,
-    isFetching,
-    isQuoteStale,
-    focusedInput,
-    inputProgress,
-    outputProgress,
-    sliderPressProgress,
-  });
+  const executeSwap = performanceTracking.getState().executeFn({
+    screen: Screens.SWAPS,
+    operation: TimeToSignOperation.CallToAction,
+    fn: () => {
+      'worklet';
 
-  const SwapNavigation = useSwapNavigation({
-    configProgress,
-    executeSwap,
-    inputProgress,
-    outputProgress,
-    quoteFetchingInterval: SwapInputController.quoteFetchingInterval,
-    selectedInputAsset: internalSelectedInputAsset,
-    selectedOutputAsset: internalSelectedOutputAsset,
-  });
+      if (configProgress.value !== NavigationSteps.SHOW_REVIEW && !SwapSettings.degenMode.value) return;
 
-  const SwapWarning = useSwapWarning({
-    inputAsset: internalSelectedInputAsset,
-    inputValues: SwapInputController.inputValues,
-    outputAsset: internalSelectedOutputAsset,
-    quote,
-    sliderXPosition,
-    isFetching,
-    isQuoteStale,
-  });
+      const inputAsset = internalSelectedInputAsset.value;
+      const outputAsset = internalSelectedOutputAsset.value;
+      const q = quote.value;
 
-  const AnimatedSwapStyles = useAnimatedSwapStyles({
-    SwapWarning,
-    internalSelectedInputAsset,
-    internalSelectedOutputAsset,
-    inputProgress,
-    outputProgress,
-    configProgress,
-    isFetching,
-  });
+      // TODO: What other checks do we need here?
+      if (isSwapping.value || !inputAsset || !outputAsset || !q || (q as QuoteError)?.error) {
+        return;
+      }
 
-  const outputQuotesAreDisabled = useSwapOutputQuotesDisabled({
-    inputAsset: internalSelectedInputAsset,
-    outputAsset: internalSelectedOutputAsset,
+      isSwapping.value = true;
+      SwapInputController.quoteFetchingInterval.stop();
+
+      const type = inputAsset.chainId !== outputAsset.chainId ? 'crosschainSwap' : 'swap';
+      const quoteData = q as QuoteTypeMap[typeof type];
+      const isNativeWrapOrUnwrap = quoteData.swapType === SwapType.wrap || quoteData.swapType === SwapType.unwrap;
+
+      const parameters: Omit<RapSwapActionParameters<typeof type>, 'gasParams' | 'gasFeeParamsBySpeed' | 'selectedGasFee'> = {
+        sellAmount: quoteData.sellAmount?.toString(),
+        buyAmount: quoteData.buyAmount?.toString(),
+        chainId: inputAsset.chainId,
+        assetToSell: inputAsset,
+        assetToBuy: outputAsset,
+        quote: {
+          ...quoteData,
+          buyAmountDisplay: isNativeWrapOrUnwrap ? quoteData.buyAmount : quoteData.buyAmountDisplay,
+          sellAmountDisplay: isNativeWrapOrUnwrap ? quoteData.sellAmount : quoteData.sellAmountDisplay,
+          feeInEth: isNativeWrapOrUnwrap ? '0' : quoteData.feeInEth,
+        },
+      };
+
+      runOnJS(getNonceAndPerformSwap)({
+        type,
+        parameters,
+      });
+    },
+    metadata: {
+      degenMode: swapsStore.getState().degenMode,
+    },
   });
 
   const swapInfo = useDerivedValue(() => {
@@ -428,6 +475,53 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
       areBothAssetsSet,
       isBridging,
     };
+  });
+
+  const SwapTextStyles = useSwapTextStyles({
+    inputMethod: SwapInputController.inputMethod,
+    inputValues: SwapInputController.inputValues,
+    internalSelectedInputAsset,
+    internalSelectedOutputAsset,
+    isFetching,
+    isQuoteStale,
+  });
+
+  const SwapNavigation = useSwapNavigation({
+    configProgress,
+    executeSwap,
+    inputProgress,
+    isDegenMode: SwapSettings.degenMode,
+    outputProgress,
+    quoteFetchingInterval: SwapInputController.quoteFetchingInterval,
+    selectedInputAsset: internalSelectedInputAsset,
+    selectedOutputAsset: internalSelectedOutputAsset,
+    swapInfo,
+  });
+
+  const SwapWarning = useSwapWarning({
+    inputAsset: internalSelectedInputAsset,
+    inputValues: SwapInputController.inputValues,
+    outputAsset: internalSelectedOutputAsset,
+    quote,
+    isFetching,
+    isQuoteStale,
+  });
+
+  const AnimatedSwapStyles = useAnimatedSwapStyles({
+    SwapWarning,
+    configProgress,
+    degenMode: SwapSettings.degenMode,
+    inputProgress,
+    internalSelectedInputAsset,
+    internalSelectedOutputAsset,
+    isFetching,
+    outputProgress,
+    swapInfo,
+  });
+
+  const outputQuotesAreDisabled = useSwapOutputQuotesDisabled({
+    inputAsset: internalSelectedInputAsset,
+    outputAsset: internalSelectedOutputAsset,
   });
 
   const handleProgressNavigation = useCallback(
@@ -445,6 +539,7 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
           } else {
             inputProgress.value = NavigationSteps.INPUT_ELEMENT_FOCUSED;
             outputProgress.value = NavigationSteps.TOKEN_LIST_FOCUSED;
+            SwapNavigation.handleDismissSettings({ skipAssetChecks: true });
           }
           break;
         case SwapAssetType.outputAsset:
@@ -455,11 +550,12 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
           } else {
             inputProgress.value = NavigationSteps.TOKEN_LIST_FOCUSED;
             outputProgress.value = NavigationSteps.INPUT_ELEMENT_FOCUSED;
+            SwapNavigation.handleDismissSettings({ skipAssetChecks: true });
           }
           break;
       }
     },
-    [internalSelectedInputAsset, internalSelectedOutputAsset, inputProgress, outputProgress]
+    [SwapNavigation, internalSelectedInputAsset, internalSelectedOutputAsset, inputProgress, outputProgress]
   );
 
   const setSelectedOutputChainId = (chainId: ChainId) => {
@@ -537,7 +633,10 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
 
       if (didSelectedAssetChange) {
         const assetToSet = insertUserAssetBalance
-          ? { ...asset, balance: (asset && userAssetsStore.getState().getUserAsset(asset.uniqueId)?.balance) || asset?.balance }
+          ? {
+              ...asset,
+              balance: (asset && userAssetsStore.getState().getUserAsset(asset.uniqueId)?.balance) || asset?.balance,
+            }
           : asset;
 
         if (isSameAsOtherAsset) {
@@ -605,89 +704,105 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
     };
   }, []);
 
-  const hasEnoughFundsForGas = useSharedValue<boolean | undefined>(undefined);
+  // Stop auto-fetching if there is a quote error or no input asset balance
   useAnimatedReaction(
-    () => isFetching.value,
-    fetching => {
-      if (fetching) hasEnoughFundsForGas.value = undefined;
-    }
+    () =>
+      SwapWarning.swapWarning.value.type === SwapWarningType.no_quote_available ||
+      SwapWarning.swapWarning.value.type === SwapWarningType.no_route_found ||
+      (internalSelectedInputAsset.value && equalWorklet(internalSelectedInputAsset.value.maxSwappableAmount, '0')),
+    (shouldStop, previous) => {
+      if (shouldStop && previous === false) {
+        SwapInputController.quoteFetchingInterval.stop();
+      }
+    },
+    []
   );
 
-  const confirmButtonProps = useDerivedValue(() => {
+  const confirmButtonProps = useDerivedValue<ConfirmButtonProps>(() => {
     if (isSwapping.value) {
-      return { label: swapping, disabled: true };
+      return { label: swapping, disabled: true, type: 'hold' };
     }
 
     if (configProgress.value === NavigationSteps.SHOW_GAS) {
-      return { icon: '􀆅', label: save, disabled: false };
+      return { label: done, disabled: false, type: 'tap' };
+    }
+
+    if (configProgress.value === NavigationSteps.SHOW_SETTINGS) {
+      return { label: done, disabled: false, type: 'tap' };
     }
 
     const hasSelectedAssets = internalSelectedInputAsset.value && internalSelectedOutputAsset.value;
     if (!hasSelectedAssets) {
-      return { label: selectToken, disabled: true };
+      return { label: selectToken, disabled: true, type: 'hold' };
+    }
+
+    const sellAsset = internalSelectedInputAsset.value;
+    const enoughFundsForSwap =
+      sellAsset &&
+      !equalWorklet(sellAsset.maxSwappableAmount, '0') &&
+      lessThanOrEqualToWorklet(SwapInputController.inputValues.value.inputAmount, sellAsset.maxSwappableAmount);
+
+    if (!enoughFundsForSwap && hasEnoughFundsForGas.value !== undefined) {
+      return { label: insufficientFunds, disabled: true, type: 'hold' };
     }
 
     const isInputZero = equalWorklet(SwapInputController.inputValues.value.inputAmount, 0);
     const isOutputZero = equalWorklet(SwapInputController.inputValues.value.outputAmount, 0);
 
     const userHasNotEnteredAmount = SwapInputController.inputMethod.value !== 'slider' && isInputZero && isOutputZero;
-
     const userHasNotMovedSlider = SwapInputController.inputMethod.value === 'slider' && SwapInputController.percentageToSwap.value === 0;
 
     if (userHasNotEnteredAmount || userHasNotMovedSlider) {
-      return { label: enterAmount, disabled: true, opacity: 1 };
+      return { label: enterAmount, disabled: true, opacity: 1, type: 'hold' };
     }
 
-    if (
-      [SwapWarningType.no_quote_available, SwapWarningType.no_route_found, SwapWarningType.insufficient_liquidity].includes(
-        SwapWarning.swapWarning.value.type
-      )
-    ) {
-      return { icon: '􀕹', label: review, disabled: true };
-    }
-
-    const sellAsset = internalSelectedInputAsset.value;
-    const enoughFundsForSwap =
-      sellAsset && lessThanOrEqualToWorklet(SwapInputController.inputValues.value.inputAmount, sellAsset.maxSwappableAmount);
-
-    if (!enoughFundsForSwap) {
-      return { label: insufficientFunds, disabled: true };
-    }
+    const holdLabel = swapInfo.value.isBridging ? holdToBridge : holdToSwap;
+    const reviewLabel = SwapSettings.degenMode.value ? holdLabel : review;
 
     const isQuoteError = quote.value && 'error' in quote.value;
     const isLoadingGas = !isQuoteError && hasEnoughFundsForGas.value === undefined;
-    const isReviewSheetOpen = configProgress.value === NavigationSteps.SHOW_REVIEW;
+    const isReviewSheetOpen = configProgress.value === NavigationSteps.SHOW_REVIEW || SwapSettings.degenMode.value;
 
-    if ((isFetching.value || isLoadingGas) && !isQuoteError) {
-      return { label: fetchingPrices, disabled: (isReviewSheetOpen && isFetching.value) || !quote.value };
+    const isStale =
+      !!isQuoteStale.value &&
+      (SwapInputController.inputMethod.value !== 'slider' || sliderPressProgress.value === SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT);
+
+    if ((isFetching.value || isLoadingGas || isStale) && !isQuoteError) {
+      const disabled = (isReviewSheetOpen && (isFetching.value || isLoadingGas || isStale)) || !quote.value;
+      const buttonType = isReviewSheetOpen ? 'hold' : 'tap';
+      return { label: fetchingPrices, disabled, type: buttonType };
     }
 
-    if (isQuoteError) {
-      return { icon: isReviewSheetOpen ? undefined : '􀕹', label: isReviewSheetOpen ? quoteError : review, disabled: true };
+    const quoteUnavailable = [
+      SwapWarningType.no_quote_available,
+      SwapWarningType.no_route_found,
+      SwapWarningType.insufficient_liquidity,
+    ].includes(SwapWarning.swapWarning.value.type);
+
+    if (quoteUnavailable || isQuoteError) {
+      const icon = isReviewSheetOpen ? undefined : '􀕹';
+      return { icon, label: isReviewSheetOpen ? quoteError : reviewLabel, disabled: true, type: 'hold' };
     }
 
-    if (!hasEnoughFundsForGas.value) {
-      return { label: insufficientFunds, disabled: true };
+    if (hasEnoughFundsForGas.value === false) {
+      const nativeCurrency = nativeChainAssets[sellAsset?.chainId || ChainId.mainnet];
+      return {
+        label: `${insufficient} ${nativeCurrency.symbol}`,
+        disabled: true,
+        type: 'hold',
+      };
     }
 
     if (isReviewSheetOpen) {
-      return { icon: '􀎽', label: tapToSwap, disabled: false };
+      const isDraggingSlider = !!isQuoteStale.value && sliderPressProgress.value !== SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT;
+      return { icon: '􀎽', label: holdLabel, disabled: isDraggingSlider, type: 'hold' };
     }
 
-    return { icon: '􀕹', label: review, disabled: false };
+    return { icon: '􀕹', label: reviewLabel, disabled: false, type: 'tap' };
   });
 
   const confirmButtonIconStyle = useAnimatedStyle(() => {
-    const isInputZero = equalWorklet(SwapInputController.inputValues.value.inputAmount, 0);
-    const isOutputZero = equalWorklet(SwapInputController.inputValues.value.outputAmount, 0);
-
-    const sliderCondition =
-      SwapInputController.inputMethod.value === 'slider' &&
-      (SwapInputController.percentageToSwap.value === 0 || isInputZero || isOutputZero);
-    const inputCondition = SwapInputController.inputMethod.value !== 'slider' && (isInputZero || isOutputZero) && !isFetching.value;
-
-    const shouldHide = sliderCondition || inputCondition;
-
+    const shouldHide = !confirmButtonProps.value.icon;
     return {
       display: shouldHide ? 'none' : 'flex',
     };
@@ -725,6 +840,7 @@ export const SwapProvider = ({ children }: SwapProviderProps) => {
         outputQuotesAreDisabled,
         swapInfo,
         executeSwap,
+        quoteFetchingInterval: SwapInputController.quoteFetchingInterval,
 
         SwapSettings,
         SwapInputController,

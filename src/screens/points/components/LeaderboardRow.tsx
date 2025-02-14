@@ -1,15 +1,13 @@
 import * as i18n from '@/languages';
 import React, { memo, useCallback, useMemo } from 'react';
 import { Keyboard, Share } from 'react-native';
-import { MenuActionConfig } from 'react-native-ios-context-menu';
 import ContextMenuButton from '@/components/native-context-menu/contextMenu';
-import { useClipboard, useContacts, useWallets, useWatchWallet } from '@/hooks';
+import { useClipboard, useContacts, useSwitchWallet, useWallets, useWatchWallet } from '@/hooks';
 import { useNavigation } from '@/navigation';
 import { RAINBOW_PROFILES_BASE_URL } from '@/references';
 import Routes from '@/navigation/routesNames';
 import { ethereumUtils, isENSNFTRecord } from '@/utils';
 import { address as formatAddress } from '@/utils/abbreviations';
-import { Network } from '@/networks/types';
 import { ContactAvatar, showDeleteContactActionSheet } from '@/components/contacts';
 import { Bleed, Box, Inline, Stack, Text } from '@/design-system';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -20,6 +18,7 @@ import { useTheme } from '@/theme';
 import LinearGradient from 'react-native-linear-gradient';
 import { ButtonPressAnimation } from '@/components/animations';
 import { noop } from 'lodash';
+import { ChainId } from '@/state/backendNetworks/types';
 
 const ACTIONS = {
   ADD_CONTACT: 'add-contact',
@@ -43,16 +42,16 @@ export const LeaderboardRow = memo(function LeaderboardRow({
   points: number;
   rank: number;
 }) {
-  const { switchToWalletWithAddress, selectedWallet } = useWallets();
+  const { selectedWallet } = useWallets();
+  const { switchToWalletWithAddress } = useSwitchWallet();
   const { isWatching } = useWatchWallet({ address });
   const { colors } = useTheme();
   const { navigate } = useNavigation();
   const { setClipboard } = useClipboard();
   const { contacts, onRemoveContact } = useContacts();
   const isSelectedWallet = useMemo(() => {
-    const visibleWallet = selectedWallet.addresses.find((wallet: { visible: boolean }) => wallet.visible);
-    ``;
-    return visibleWallet.address.toLowerCase() === address?.toLowerCase();
+    const visibleWallet = selectedWallet.addresses?.find((wallet: { visible: boolean }) => wallet.visible);
+    return visibleWallet?.address.toLowerCase() === address?.toLowerCase();
   }, [selectedWallet.addresses, address]);
 
   const contact = address ? contacts[address.toLowerCase()] : undefined;
@@ -61,14 +60,18 @@ export const LeaderboardRow = memo(function LeaderboardRow({
 
   const menuItems = useMemo(() => {
     return [
-      isWatching && {
-        actionKey: ACTIONS.OPEN_WALLET,
-        actionTitle: i18n.t(i18n.l.profiles.details.open_wallet),
-        icon: {
-          iconType: 'SYSTEM',
-          iconValue: 'iphone.and.arrow.forward',
-        },
-      },
+      ...(isWatching
+        ? [
+            {
+              actionKey: ACTIONS.OPEN_WALLET,
+              actionTitle: i18n.t(i18n.l.profiles.details.open_wallet),
+              icon: {
+                iconType: 'SYSTEM',
+                iconValue: 'iphone.and.arrow.forward',
+              },
+            },
+          ]
+        : []),
       {
         actionKey: ACTIONS.COPY_ADDRESS,
         actionTitle: i18n.t(i18n.l.profiles.details.copy_address),
@@ -111,7 +114,7 @@ export const LeaderboardRow = memo(function LeaderboardRow({
           iconValue: 'square.and.arrow.up',
         },
       },
-    ].filter(Boolean) as MenuActionConfig[];
+    ];
   }, [isWatching, formattedAddress, contact]);
 
   const handlePressMenuItem = useCallback(
@@ -127,7 +130,7 @@ export const LeaderboardRow = memo(function LeaderboardRow({
         setClipboard(address);
       }
       if (address && actionKey === ACTIONS.ETHERSCAN) {
-        ethereumUtils.openAddressInBlockExplorer(address, Network.mainnet);
+        ethereumUtils.openAddressInBlockExplorer({ address: address, chainId: ChainId.mainnet });
       }
       if (actionKey === ACTIONS.ADD_CONTACT) {
         navigate(Routes.MODAL_SCREEN, {

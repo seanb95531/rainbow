@@ -16,6 +16,7 @@
       "tab_balances": "Balances",
       "tab_balances_empty_state": "Balance",
       "tab_balances_tooltip": "Ethereum and Token Balances",
+      "tab_claimables": "Claimables",
       "tab_collectibles": "Collectibles",
       "tab_interactions": "Interactions",
       "tab_interactions_tooltip": "Smart Contract Interactions",
@@ -95,7 +96,8 @@
         "generic": "Error while trying to backup. Error code: %{errorCodes}",
         "no_keys_found": "No keys found. Please try again.",
         "backup_not_found": "Backup not found. Please try again.",
-        "no_account_found": "Unable to retrieve backup files. Make sure you're logged in."
+        "no_account_found": "Unable to retrieve backup files. Make sure you're logged in.",
+        "damaged_wallet": "Unable to backup wallet. Missing keychain data."
       },
       "wrong_pin": "The PIN code you entered was incorrect and we can't make a backup. Please try again with the correct code.",
       "already_backed_up": {
@@ -114,6 +116,8 @@
         "no_backups": "No backups found",
         "failed_to_fetch_backups": "Failed to fetch backups",
         "retry": "Retry",
+        "refresh": "Refresh",
+        "syncing_cloud_store": "Syncing to %{cloudPlatformName}",
         "fetching_backups": "Retrieving backups from %{cloudPlatformName}",
         "back_up_to_platform": "Back up to %{cloudPlatformName}",
         "restore_from_platform": "Restore from %{cloudPlatformName}",
@@ -136,7 +140,7 @@
         "choose_backup_cloud_description": "Securely back up your wallet to %{cloudPlatform} so you can restore it if you lose your device or get a new one.",
         "choose_backup_manual_description": "Back up your wallet manually by saving your secret phrase in a secure location.",
         "enable_cloud_backups_description": "If you prefer to back up your wallets manually, you can do so below.",
-        "latest_backup": "Last Backup: %{date}",
+        "latest_backup": "Latest Backup: %{date}",
         "back_up_all_wallets_to_cloud": "Back Up All Wallets to %{cloudPlatformName}",
         "most_recent_backup": "Most Recent Backup",
         "out_of_date": "Out of Date",
@@ -144,6 +148,12 @@
         "older_backups": "Older Backups",
         "no_older_backups": "No Older Backups",
         "older_backups_title": "%{date} at %{time}",
+        "statuses": {
+          "not_enabled": "Not Enabled",
+          "syncing": "Syncing",
+          "out_of_date": "Out of Date",
+          "up_to_date": "Up to Date"
+        },
         "password": {
           "a_password_youll_remember_part_one": "This password is",
           "not": "not",
@@ -449,6 +459,33 @@
         "action": "Continue"
       }
     },
+    "claimables": {
+      "panel": {
+        "estimating_gas_fee": "Estimating Gas Fee...",
+        "gas_error": "Gas Error",
+        "quote_error": "Quote Error",
+        "no_route_found": "No Route Found",
+        "fetching_quote": "Fetching Quote...",
+        "select_a_network": "Select a Network",
+        "select_a_token": "Select a Token",
+        "amount_to_claim_on_network": "%{amount} to claim on %{network}",
+        "claim": "Claim",
+        "claiming": "Claiming",
+        "claim_in_progress": "Claim in Progress...",
+        "claimed": "Claimed!",
+        "claiming_failed": "Claim Failed",
+        "insufficient_funds": "Insufficient Funds",
+        "claim_amount": "Claim %{amount}",
+        "done": "Done",
+        "try_again": "Try Again",
+        "tokens_on_the_way": "Tokens on the way!",
+        "a_token": "a token",
+        "a_network": "a network",
+        "swap_failed": "Swap Failed",
+        "receive": "Receive",
+        "on": "on"
+      }
+    },
     "cloud": {
       "backup_success": "Your wallet has been backed up successfully!"
     },
@@ -478,33 +515,39 @@
     },
     "developer_settings": {
       "alert": "Alert",
+      "analyze_react_query": "Analyze React Query",
       "applied": "APPLIED",
-      "backups_deleted_successfully": "Backups deleted successfully",
-      "clear_async_storage": "Clear async storage",
+      "backups_deleted_successfully": "Backups Deleted Successfully",
+      "clear_async_storage": "Clear AsyncStorage",
       "clear_pending_txs": "Clear Pending Transactions",
       "clear_image_cache": "Clear Image Cache",
       "clear_image_metadata_cache": "Clear Image Metadata Cache",
-      "clear_local_storage": "Clear local storage",
-      "clear_mmkv_storage": "Clear MMKV storage",
-      "connect_to_hardhat": "Connect to hardhat",
-      "crash_app_render_error": "Crash app (render error)",
+      "clear_local_storage": "Clear Local Storage",
+      "clear_mmkv_storage": "Clear MMKV Storage",
+      "clear_react_query_cache": "Clear React Query Cache",
+      "connect_to_anvil": "Connect to Anvil",
+      "copy_fcm_token": "Copy FCM Token",
+      "copy_log_lines": "Copy Log Lines",
+      "copy_signing_wallet_address": "Copy Signing Wallet Address",
+      "disconnect_to_anvil": "Disconnect from Anvil",
+      "crash_app_render_error": "Crash App (Render Error)",
       "enable_testnets": "Enable Testnets",
-      "installing_update": "Installing update",
-      "navigation_entry_point": "Navigation entry point",
-      "no_update": "No update",
+      "installing_update": "Installing Update",
+      "navigation_entry_point": "Navigation Entry Point",
+      "no_update": "No Update",
       "not_applied": "NOT APPLIED",
       "notifications_debug": "Notifications Debug",
-      "remove_all_backups": "Remove all backups",
+      "remove_all_backups": "Remove All Backups",
       "keychain": {
         "menu_title": "Reset Keychain",
-        "delete_wallets": "Delete all wallets",
+        "delete_wallets": "Delete All Wallets",
         "alert_title": "Careful!",
         "alert_body": "🚨🚨🚨 \nThis will permanently delete all of your wallets private keys & data, please make sure you have everything backed up before proceeding!! \n🚨🚨🚨"
       },
-      "restart_app": "Restart app",
-      "reset_experimental_config": "Reset experimental config",
+      "restart_app": "Restart App",
+      "reset_experimental_config": "Reset Experimental Config",
       "status": "Status",
-      "sync_codepush": "Sync codepush"
+      "sync_codepush": "Sync CodePush"
     },
     "discover": {
       "pulse": {
@@ -624,7 +667,6 @@
       "high": "High",
       "slippage_tolerance": "Max Slippage",
       "source_picker": "Route Swaps via",
-      "use_flashbots": "Use Flashbots",
       "swapping_for_prefix": "Swapping for",
       "view_details": "View Details",
       "token_sections": {
@@ -653,13 +695,48 @@
         "social": {
           "facebook": "Facebook",
           "homepage": "Homepage",
+          "website": "Website",
           "reddit": "Reddit",
           "telegram": "Telegram",
-          "twitter": "Twitter"
+          "twitter": "Twitter",
+          "search_on_twitter": "Search on Twitter"
         },
         "uniswap_liquidity": "Uniswap liquidity",
         "value": "Value",
-        "volume_24_hours": "24h volume"
+        "volume_24_hours": "24h volume",
+        "menu": {
+          "view_on": "View on %{blockExplorerName}",
+          "share": "Share",
+          "copy_contract_address": "Copy Contract Address",
+          "pin": "Pin",
+          "unpin": "Unpin",
+          "hide": "Hide",
+          "unhide": "Unhide"
+        },
+        "no_data_available": "No data available"
+      },
+      "sections": {
+        "market_stats": {
+          "title": "Market Stats",
+          "circulating_supply": "Circulating Supply",
+          "max_supply": "Max Supply",
+          "fully_diluted_valuation": "Fully Diluted Valuation",
+          "market_cap": "Market Cap",
+          "created": "Created",
+          "volume_24_hours": "24h Volume",
+          "rank": "Rank"
+        },
+        "buy": {
+          "title": "Buy",
+          "pay_with": "Pay with",
+          "available_balance": "Available Balance",
+          "open_swaps": "Open Swaps",
+          "low_balance": "Low balance"
+        },
+        "about": {
+          "title": "About",
+          "what_is": "What is %{assetName}?"
+        }
       },
       "chart": {
         "all_time": "All Time",
@@ -681,7 +758,7 @@
         },
         "no_price_data": "No price data",
         "past_timespan": "Past %{formattedTimespan}",
-        "today": "Today",
+        "today": "Past Day",
         "token_pool": "%{tokenName} Pool"
       },
       "contact_profile": {
@@ -705,7 +782,6 @@
       "swap": {
         "swap": "Swap",
         "bridge": "Bridge",
-        "flashbots_protect": "Flashbots Protect",
         "losing": "Losing",
         "on": "On",
         "off": "Off",
@@ -747,9 +823,14 @@
         "output_exchange_rate": "1 %{outputSymbol} for %{executionRate} %{inputSymbol}"
       },
       "swap_details_v2": {
-        "rainbow_fee": "Included Rainbow Fee",
+        "automatic": "Auto",
+        "degen_mode": "Degen Mode",
+        "degen_mode_description": "Skip the review step to swap faster",
         "maximum_sold": "Maximum Sold",
-        "minimum_received": "Minimum Received"
+        "minimum_received": "Minimum Received",
+        "preferred_network": "Preferred Network",
+        "rainbow_fee": "Included Rainbow Fee",
+        "settings": "Settings"
       },
       "token_index": {
         "get_token": "Get %{assetSymbol}",
@@ -834,6 +915,8 @@
       "adworld_title": "Welcome to Rainbow World!",
       "farcaster_description": "Our most boring app icon ever, inspired by Warpcast's bland minimalism.",
       "farcaster_title": "You've unlocked\nRainbowcast",
+      "redacted_description": "A stupi-exclusive Rainbow icon for the true Gdupi enjoyers.",
+      "redacted_title": "You've unlocked\n Redacted Rainbow",
       "button": "Snag the icon"
     },
     "explain": {
@@ -849,6 +932,10 @@
         "text": "%{tokenSymbol} is available on %{networks}. To move %{tokenSymbol} between networks, use a Bridge like Hop.",
         "title_plural": "Available on %{length} Networks",
         "title_singular": "Available on the %{network} Network"
+      },
+      "default_network_explainer": {
+        "text": "%{chainName} is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.",
+        "title": "What's %{chainName}?"
       },
       "arbitrum": {
         "text": "Arbitrum is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
@@ -900,37 +987,69 @@
         "text": "The miner tip goes directly to the miner who confirms your transaction on the network.\n\nA higher tip makes your transaction more likely to be confirmed quickly.",
         "title": "Miner tip"
       },
-      "optimism": {
-        "text": "Optimism is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
-        "title": "What's Optimism?"
+      "apechain": {
+        "text": "ApeChain is a Layer 3 network that runs on top of Arbitrum Orbit and Ethereum.\n\nIt significantly enhances ApeCoin's utility, fostering a robust and dynamic economy driven by $APE.",
+        "title": "What's ApeChain?"
+      },
+      "avalanche": {
+        "text": "Avalanche is a sidechain, a distinct network that runs alongside Ethereum and is compatible with it.\n\nIt allows for cheaper and faster transactions, but unlike Layer 2 networks, Avalanche has its own security and consensus mechanisms that differ from Ethereum.",
+        "title": "What's Avalanche?"
       },
       "base": {
         "text": "Base is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
         "title": "What's Base?"
       },
-      "avalanche": {
-        "text": "Avalanche is a sidechain, a distinct network that runs alongside Ethereum and is compatible with it.\n\nIt allows for cheaper and faster transactions, but unlike Layer 2 networks, Avalanche has its own security and consensus mechanisms that differ from Ethereum.",
-        "title": "What's Avalanche"
-      },
-      "degen": {
-        "text": "Degen Chain is a Layer 3 network that runs on top of Arbitrum and Ethereum, offering incredibly fast and cheap transactions denominated in the Farcaster community token $degen.",
-        "title": "What's Degen Chain?"
-      },
       "blast": {
         "text": "Blast is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
         "title": "What's Blast?"
       },
-      "zora": {
-        "text": "Zora is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
-        "title": "What's Zora?"
+      "bsc": {
+        "text": "Binance Smart Chain (BSC) is the blockchain for the trading platform Binance. \n\nBSC allows for cheaper and faster transactions, but unlike a Layer 2 network, it has its own security and consensus mechanisms that differ from Ethereum.",
+        "title": "What's Binance Smart Chain?"
+      },
+      "degen": {
+        "text": "Degen Chain is a Layer 3 network that runs on top of Arbitrum Orbit and Ethereum.",
+        "title": "What's Degen Chain?"
+      },
+      "gravity": {
+        "text": "Gravity is a high-performance Layer 1 blockchain built by Galxe, achieving over one gigagas per second throughput and sub-second finality.\n\nIt utilizes a pipelined AptosBFT consensus engine and a parallel EVM runtime, maintaining Proof-of-Stake security through restaking technology.",
+        "title": "What's Gravity?"
+      },
+      "gnosis": {
+        "text": "Gnosis Chain is a community-owned Ethereum sidechain operated by a diverse set of validators worldwide.\n\nIt focuses on resilience and credible neutrality, offering cheaper and faster transactions while maintaining its own security and consensus mechanisms.",
+        "title": "What's Gnosis?"
+      },
+      "ink": {
+        "text": "Ink is a Layer 2 network built on the OP Stack, designed to scale Ethereum by providing sub-second block times and low transaction fees.\n\nUnleashed by Kraken, and part of the Superchain, Ink aims to enhance performance and accessibility for decentralized finance (DeFi) applications.",
+        "title": "What's Ink?"
+      },
+      "linea": {
+        "text": "Linea is a secure, low-cost, Ethereum-equivalent Layer 2 blockchain developed by ConsenSys.\n\nIt enables faster and more affordable transactions without compromising security and decentralization, aiming to onboard the next billion users to web3.",
+        "title": "What's Linea?"
+      },
+      "optimism": {
+        "text": "Optimism is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
+        "title": "What's Optimism?"
       },
       "polygon": {
         "text": "Polygon is a sidechain, a distinct network that runs alongside Ethereum and is compatible with it.\n\nIt allows for cheaper and faster transactions, but unlike Layer 2 networks, Polygon has its own security and consensus mechanisms that differ from Ethereum.",
         "title": "What's Polygon?"
       },
-      "bsc": {
-        "text": "Binance Smart Chain (BSC) is the blockchain for the trading platform Binance. \n\nBSC allows for cheaper and faster transactions, but unlike a Layer 2 network, it has its own security and consensus mechanisms that differ from Ethereum.",
-        "title": "What's Binance Smart Chain?"
+      "scroll": {
+        "text": "Scroll is a Layer 2 solution built atop Ethereum, aiming to enhance scalability and transaction efficiency.\n\nIt employs roll-up technology to bundle transactions, which are then submitted to Ethereum, benefiting from its security infrastructure.",
+        "title": "What's Scroll?"
+      },
+      "sanko": {
+        "text": "Sanko is a Layer 3 network that runs on top of Arbitrum and Ethereum, focusing on NFTs and gaming.\n\nIt uses AnyTrust Data Availability and fraud proofs for state validation, allowing for faster and cheaper transactions while leveraging Ethereum's security. Sanko features a native token called DMT and employs whitelisted validators for proposing and challenging state roots.",
+        "title": "What's Sanko?"
+      },
+      "zksync": {
+        "text": "ZKsync is a Layer 2 protocol designed to scale Ethereum using advanced zero-knowledge cryptographic proofs.\n\nIt enhances Ethereum’s throughput while maintaining decentralization and security, enabling faster and cheaper transactions.",
+        "title": "What's Zksync?"
+      },
+      "zora": {
+        "text": "Zora is a Layer 2 network that runs on top of Ethereum, enabling cheaper and faster transactions while still benefiting from the underlying security of Ethereum.\n\nIt bundles lots of transactions together in a \"roll up\" before sending them down to live permanently on Ethereum.",
+        "title": "What's Zora?"
       },
       "read_more": "Read More",
       "learn_more": "Learn More",
@@ -1002,15 +1121,6 @@
           "fragment1": "Still curious? ",
           "fragment2": "Read more",
           "fragment3": " about slippage and how it affects swaps."
-        }
-      },
-      "flashbots": {
-        "text": "Flashbots protects your transactions from frontrunning and sandwich attacks which might result in you getting a worse price or your transaction failing.",
-        "title": "Flashbots",
-        "still_curious": {
-          "fragment1": "Still curious? ",
-          "fragment2": "Read more",
-          "fragment3": " about Flashbots and the protection it offers."
         }
       },
       "swap_refuel": {
@@ -1158,6 +1268,12 @@
         "check_out_my_wallet": "Check out my collectibles on 🌈 Rainbow at %{showcaseUrl}",
         "check_out_this_wallet": "Check out this wallet's collectibles on 🌈 Rainbow at %{showcaseUrl}"
       }
+    },
+    "loading": {
+      "backing_up": "Backing up...",
+      "creating_wallet": "Creating wallet...",
+      "importing_wallet": "Importing...",
+      "restoring": "Restoring..."
     },
     "message": {
       "click_to_copy_to_clipboard": "Click to copy to clipboard",
@@ -1310,10 +1426,20 @@
     "nfts": {
       "selling": "Selling",
       "sort": {
+        "ABC": "Alphabetical",
         "abc": "Alphabetical",
+        "MOST_RECENT": "Recent",
         "most_recent": "Recent",
-        "floor_price": "Floor Price"
-      }
+        "FLOOR_PRICE": "Floor Price",
+        "floor_price": "Floor Price",
+        "order": {
+          "asc": "Ascending order",
+          "desc": "Descending order"
+        }
+      },
+      "empty": "Collectibles",
+      "collect_now": "Collect Now",
+      "will_appear_here": "Your Collectibles Will Appear Here"
     },
     "nft_offers": {
       "card": {
@@ -1827,10 +1953,17 @@
       }
     },
     "positions": {
+      "lp_range_status": {
+        "full_range": "Full Range",
+        "out_of_range": "Out of Range",
+        "in_range": "In Range"
+      },
       "open_dapp": "Open 􀮶",
       "deposits": "Deposits",
       "borrows": "Borrows",
-      "rewards": "Rewards"
+      "stakes": "Staked",
+      "rewards": "Rewards",
+      "pools": "Pools"
     },
     "savings": {
       "deposit": "Deposit",
@@ -1970,7 +2103,8 @@
     },
     "swap": {
       "actions": {
-        "tap_to_swap": "Tap to Swap",
+        "hold_to_swap": "Hold to Swap",
+        "hold_to_bridge": "Hold to Bridge",
         "save": "Save",
         "enter_amount": "Enter Amount",
         "review": "Review",
@@ -1978,6 +2112,7 @@
         "swapping": "Swapping",
         "select_token": "Select Token",
         "insufficient_funds": "Insufficient Funds",
+        "insufficient": "Insufficient",
         "quote_error": "Quote Error"
       },
       "aggregators": {
@@ -1993,7 +2128,6 @@
       "find_a_token_to_buy": "Find a token to buy",
       "search_your_tokens": "Search your tokens",
       "error_executing_swap": "Error executing swap",
-      "flashbots_protection": "Flashbots Protection",
       "tokens_input": {
         "tokens": "Tokens",
         "sort": "Sort",
@@ -2052,6 +2186,8 @@
     },
     "token_search": {
       "section_header": {
+        "recent": "Recent",
+        "popular": "Popular in Rainbow",
         "favorites": "Favorites",
         "bridge": "Bridge",
         "verified": "Verified",
@@ -2094,9 +2230,9 @@
           "failed": "Send Failed"
         },
         "receive": {
-          "pending": "",
+          "pending": "Receiving",
           "confirmed": "Received",
-          "failed": ""
+          "failed": "Receive Failed"
         },
         "withdraw": {
           "pending": "Withdrawing",
@@ -2480,10 +2616,28 @@
       "balance_title": "Balance",
       "buy": "Buy",
       "change_wallet": {
-        "no_balance": "No Balance",
+        "loading_balance": "Loading Balance...",
         "balance_eth": "%{balanceEth} ETH",
         "watching": "Watching",
-        "ledger": "Ledger"
+        "ledger": "Ledger",
+        "wallets": "Wallets",
+        "all_wallets": "All Wallets",
+        "total_balance": "Total Balance",
+        "edit_hint_tooltip": {
+          "title": "Customize Your Wallets",
+          "subtitle": {
+            "prefix": "Tap the",
+            "action": "Edit",
+            "suffix": "button above to set up"
+          }
+        },
+        "address_menu": {
+          "edit": "Edit Wallet",
+          "copy": "Copy Address",
+          "settings": "Wallet Settings",
+          "notifications": "Notification Settings",
+          "remove": "Remove Wallet"
+        }
       },
       "connected_apps": "Connected Apps",
       "copy": "Copy",
@@ -2554,6 +2708,14 @@
       "my_account_address": "My account address:",
       "network_title": "Network",
       "new": {
+        "choose_wallet_group": {
+          "title": "Choose Wallet Group",
+          "description": "Choose the wallet group you’d like to create a new wallet within, or create a new one."
+        },
+        "new_wallet_group": {
+          "title": "New Wallet Group",
+          "description": "Create a new wallet group"
+        },
         "add_wallet_sheet": {
           "options": {
             "cloud": {
@@ -2728,6 +2890,8 @@
       }
     },
     "walletconnect": {
+      "connecting": "Connecting",
+      "loading": "Loading",
       "requests": "Requests",
       "wants_to_connect": "wants to connect to your wallet",
       "wants_to_connect_to_network": "wants to connect to the %{network} network",
@@ -2821,6 +2985,7 @@
             "unavailable_personal_sign": "Simulation for personal signs is not yet supported",
             "unavailable_zora_network": "Simulation on Zora is not yet supported",
             "failed_to_simulate": "The simulation failed, which suggests your transaction is likely to fail. This may be an issue with the app you’re using.",
+            "tx_api_error": "We are unable to determine whether or not your transaction will succeed or fail. Proceed with caution.",
             "warning": "No known malicious behavior was detected, but this transaction has characteristics that may pose a risk to your wallet.",
             "malicious": "Signing this transaction could result in losing access to everything in your wallet."
           },
@@ -2860,10 +3025,15 @@
         "buttons": {
           "cancel": "Cancel",
           "confirm": "􀎽 Confirm",
+          "confirming": "Confirming",
           "get_native_token": "Get %{symbol}",
           "buy_native_token": "Buy %{symbol}"
         },
         "formatted_dates": {
+          "minute_ago": "minute ago",
+          "minutes_ago": "minutes ago",
+          "hour_ago": "hour ago",
+          "hours_ago": "hours ago",
           "today": "Today",
           "day_ago": "day ago",
           "days_ago": "days ago",
@@ -2920,11 +3090,74 @@
       },
       "menus": {
         "favorite": "Favorite",
+        "home": "Home",
         "undo_favorite": "Undo Favorite",
         "remove": "Remove",
         "forward": "Forward",
-        "back": "Back"
+        "back": "Back",
+        "share": "Share",
+        "close_all_tabs": "Close All %{numberOfClosableTabs} Tabs",
+        "close_both_tabs": "Close Both Tabs",
+        "close_this_tab": "Close This Tab",
+        "close_tab": "Close Tab",
+        "new_tab": "New Tab"
       }
-    }
+    },
+    "trending_tokens": {
+      "all": "All",
+      "no_results": {
+        "title": "No results",
+        "body": "Try browsing a larger timeframe or a different network or category."
+      },
+      "and": "and",
+      "and_others": {
+        "one": "and %{count} other",
+        "other": "and %{count} others"
+      },
+      "filters": {
+        "categories": {
+          "TRENDING": "Trending",
+          "NEW": "New",
+          "FARCASTER": "Farcaster"
+        },
+        "sort": {
+          "RECOMMENDED": {
+            "label": "Sort",
+            "menuOption": "Default"
+          },
+          "VOLUME": "Volume",
+          "MARKET_CAP": "Market Cap",
+          "TOP_GAINERS": "Top Gainers",
+          "TOP_LOSERS": "Top Losers"
+        },
+        "time": {
+          "H12": "12 Hours",
+          "H12_ABBREVIATED": "12h",
+          "H24": "24 Hours",
+          "H24_ABBREVIATED": "24h",
+          "D7": "1 Week",
+          "D3": "3 Days"
+        }
+      }
+    },
+    "network_switcher": {
+      "customize_networks_banner": {
+        "title": "Customize Networks",
+        "tap_the": "Tap the",
+        "button_to_set_up": "button below to set up"
+      },
+      "drop_here_to_unpin": "Drop Here to Unpin",
+      "edit": "Edit",
+      "network": "Network",
+      "networks": "Networks",
+      "drag_to_rearrange": "Drag to Rearrange",
+      "show_less": "Show Less",
+      "more": "More",
+      "show_more": "More Networks",
+      "all_networks": "All Networks"
+    },
+    "done": "Done",
+    "copy": "Copy",
+    "paste": "Paste"
   }
 }

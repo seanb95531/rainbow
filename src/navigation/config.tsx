@@ -1,14 +1,12 @@
 import React from 'react';
-import { Keyboard, StatusBar } from 'react-native';
+import { Keyboard } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeContext';
 import colors from '@/theme/currentColors';
 import styled from '@/styled-thing';
 import { fonts } from '@/styles';
-import networkTypes from '@/helpers/networkTypes';
 import WalletBackupStepTypes from '@/helpers/walletBackupStepTypes';
 import { deviceUtils, safeAreaInsetValues } from '@/utils';
-import { getNetworkObj } from '@/networks';
 import { getPositionSheetHeight } from '@/screens/positions/PositionSheet';
 
 import { Icon } from '@/components/icons';
@@ -29,6 +27,9 @@ import { BottomSheetNavigationOptions } from '@/navigation/bottom-sheet/types';
 import { Box } from '@/design-system';
 import { IS_ANDROID } from '@/env';
 import { SignTransactionSheetRouteProp } from '@/screens/SignTransactionSheet';
+import { RequestSource } from '@/utils/requestNavigationHandlers';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 export const sharedCoolModalTopOffset = safeAreaInsetValues.top;
 
@@ -98,16 +99,13 @@ export const backupSheetSizes = {
 
 export const getHeightForStep = (step: string) => {
   switch (step) {
-    case WalletBackupStepTypes.backup_cloud:
-    case WalletBackupStepTypes.backup_manual:
+    case WalletBackupStepTypes.create_cloud_backup:
     case WalletBackupStepTypes.restore_from_backup:
       return backupSheetSizes.long;
-    case WalletBackupStepTypes.no_provider:
+    case WalletBackupStepTypes.backup_prompt:
       return backupSheetSizes.medium;
     case WalletBackupStepTypes.check_identifier:
       return backupSheetSizes.check_identifier;
-    case WalletBackupStepTypes.backup_now_manually:
-      return backupSheetSizes.shorter;
     default:
       return backupSheetSizes.short;
   }
@@ -247,12 +245,39 @@ export const consoleSheetConfig = {
   }),
 };
 
-export const dappBrowserControlPanelConfig = {
+export const networkSelectorConfig = {
+  options: ({ route: { params = {} } }) => ({
+    ...buildCoolModalConfig({
+      ...params,
+      backgroundColor: '#000000B2',
+      backgroundOpacity: 0.7,
+      cornerRadius: 0,
+      springDamping: 1,
+      topOffset: 0,
+      transitionDuration: 0.3,
+    }),
+  }),
+};
+
+export const panelConfig = {
   options: ({ route: { params = {} } }) => ({
     ...buildCoolModalConfig({
       ...params,
       backgroundOpacity: 0.7,
       cornerRadius: 0,
+      springDamping: 1,
+      topOffset: 0,
+      transitionDuration: 0.3,
+    }),
+  }),
+};
+
+export const expandedAssetSheetV2Config = {
+  options: ({ route: { params = {} } }) => ({
+    ...buildCoolModalConfig({
+      ...params,
+      backgroundOpacity: 1,
+      cornerRadius: 'device',
       springDamping: 1,
       topOffset: 0,
       transitionDuration: 0.3,
@@ -277,7 +302,7 @@ export const signTransactionSheetConfig = {
   options: ({ route }: { route: SignTransactionSheetRouteProp }) => ({
     ...buildCoolModalConfig({
       ...route.params,
-      backgroundOpacity: route?.params?.source === 'walletconnect' ? 1 : 0.7,
+      backgroundOpacity: [RequestSource.WALLETCONNECT, RequestSource.MOBILE_WALLET_PROTOCOL].includes(route?.params?.source) ? 1 : 0.7,
       cornerRadius: 0,
       springDamping: 1,
       topOffset: 0,
@@ -490,7 +515,7 @@ export const ensAdditionalRecordsSheetConfig: PartialNavigatorConfigOptions = {
 };
 
 export const explainSheetConfig: PartialNavigatorConfigOptions = {
-  options: ({ route: { params = { network: getNetworkObj(networkTypes.mainnet).name } } }) => {
+  options: ({ route: { params = { network: useBackendNetworksStore.getState().getChainsName()[ChainId.mainnet] } } }) => {
     // @ts-ignore
     const explainerConfig = explainers(params.network)[params?.type];
     return buildCoolModalConfig({
@@ -514,6 +539,8 @@ export const expandedAssetSheetConfig: PartialNavigatorConfigOptions = {
     ...buildCoolModalConfig({
       ...params,
       scrollEnabled: true,
+      springDamping: 1,
+      transitionDuration: 0.28,
     }),
   }),
 };
@@ -523,6 +550,8 @@ export const expandedAssetSheetConfigWithLimit: PartialNavigatorConfigOptions = 
     ...buildCoolModalConfig({
       ...params,
       scrollEnabled: true,
+      springDamping: 1,
+      transitionDuration: 0.28,
     }),
     limitActiveModals: true,
   }),
@@ -596,16 +625,6 @@ export const nativeStackDefaultConfigWithoutStatusBar: CoolModalConfigOptions = 
   onWillDismiss: () => {
     onWillPop();
   },
-};
-
-export const exchangeTabNavigatorConfig = {
-  initialLayout: deviceUtils.dimensions,
-  sceneContainerStyle: {
-    backgroundColor: 'transparent',
-  },
-  swipeDistanceMinimum: 0,
-  tabBar: () => null,
-  transparentCard: true,
 };
 
 const BackArrow = styled(Icon).attrs({

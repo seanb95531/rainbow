@@ -1,13 +1,15 @@
 import { createSelector } from 'reselect';
 import { buildBriefCoinsList, buildBriefUniqueTokenList } from './assets';
-import { add, convertAmountToNativeDisplay } from './utilities';
 import { NativeCurrencyKey, ParsedAddressAsset } from '@/entities';
-import { queryClient } from '@/react-query';
-import { positionsQueryKey } from '@/resources/defi/PositionsQuery';
 import store from '@/redux/store';
-import { PositionExtraData } from '@/components/asset-list/RecyclerAssetList2/core/ViewTypes';
-import { getExperimetalFlag, DEFI_POSITIONS } from '@/config/experimental';
+import { ClaimableExtraData, PositionExtraData } from '@/components/asset-list/RecyclerAssetList2/core/ViewTypes';
+import { DEFI_POSITIONS, CLAIMABLES, ExperimentalValue, ETH_REWARDS } from '@/config/experimental';
 import { RainbowPositions } from '@/resources/defi/types';
+import { Claimable } from '@/resources/addys/claimables/types';
+import { add, convertAmountToNativeDisplay, greaterThan, lessThan } from './utilities';
+import { RainbowConfig } from '@/model/remoteConfig';
+import { IS_TEST } from '@/env';
+import { UniqueId } from '@/__swaps__/types/assets';
 
 const CONTENT_PLACEHOLDER = [
   { type: 'LOADING_ASSETS', uid: 'loadings-asset-1' },
@@ -39,9 +41,11 @@ const EMPTY_WALLET_CONTENT = [
 const ONLY_NFTS_CONTENT = [{ type: 'ETH_CARD', uid: 'eth-card' }];
 
 const sortedAssetsSelector = (state: any) => state.sortedAssets;
-const hiddenCoinsSelector = (state: any) => state.hiddenCoins;
+const accountBalanceDisplaySelector = (state: any) => state.accountBalanceDisplay;
+const hiddenAssetsSelector = (state: any) => state.hiddenAssets;
 const isCoinListEditedSelector = (state: any) => state.isCoinListEdited;
 const isLoadingUserAssetsSelector = (state: any) => state.isLoadingUserAssets;
+const isLoadingBalanceSelector = (state: any) => state.isLoadingBalance;
 const isReadOnlyWalletSelector = (state: any) => state.isReadOnlyWallet;
 const nativeCurrencySelector = (state: any) => state.nativeCurrency;
 const pinnedCoinsSelector = (state: any) => state.pinnedCoins;
@@ -49,12 +53,35 @@ const sellingTokensSelector = (state: any) => state.sellingTokens;
 const showcaseTokensSelector = (state: any) => state.showcaseTokens;
 const hiddenTokensSelector = (state: any) => state.hiddenTokens;
 const uniqueTokensSelector = (state: any) => state.uniqueTokens;
+const nftSortSelector = (state: any) => state.nftSort;
+const isFetchingNftsSelector = (state: any) => state.isFetchingNfts;
 const listTypeSelector = (state: any) => state.listType;
+const remoteConfigSelector = (state: any) => state.remoteConfig;
+const experimentalConfigSelector = (state: any) => state.experimentalConfig;
+const positionsSelector = (state: any) => state.positions;
+const claimablesSelector = (state: any) => state.claimables;
+const claimableETHRewardsNativeAmountSelector = (state: any) => state.claimableETHRewardsNativeAmount;
 
-const buildBriefWalletSections = (balanceSectionData: any, uniqueTokenFamiliesSection: any) => {
+const buildBriefWalletSections = (
+  balanceSectionData: any,
+  uniqueTokenFamiliesSection: any,
+  remoteConfig: RainbowConfig,
+  experimentalConfig: Record<string, ExperimentalValue>,
+  positions: RainbowPositions | undefined,
+  claimables: Claimable[] | undefined,
+  claimableETHRewardsNativeAmount: string | undefined
+) => {
   const { balanceSection, isEmpty, isLoadingUserAssets } = balanceSectionData;
-  const positionSection = withPositionsSection(isLoadingUserAssets);
-  const sections = [balanceSection, positionSection, uniqueTokenFamiliesSection];
+
+  const positionsEnabled = experimentalConfig[DEFI_POSITIONS] && !IS_TEST;
+  const claimablesEnabled = (remoteConfig.claimables || experimentalConfig[CLAIMABLES]) && !IS_TEST;
+  const ethRewardsEnabled = (remoteConfig.rewards_enabled || experimentalConfig[ETH_REWARDS]) && !IS_TEST;
+
+  const positionSection = positionsEnabled ? withPositionsSection(positions, isLoadingUserAssets) : [];
+  const claimablesSection = claimablesEnabled
+    ? withClaimablesSection(claimables, ethRewardsEnabled, claimableETHRewardsNativeAmount, isLoadingUserAssets)
+    : [];
+  const sections = [balanceSection, claimablesSection, positionSection, uniqueTokenFamiliesSection];
 
   const filteredSections = sections.filter(section => section.length !== 0).flat(1);
 
@@ -64,16 +91,12 @@ const buildBriefWalletSections = (balanceSectionData: any, uniqueTokenFamiliesSe
   };
 };
 
-const withPositionsSection = (isLoadingUserAssets: boolean) => {
-  // check if the feature is enabled
-  const positionsEnabled = getExperimetalFlag(DEFI_POSITIONS);
-  if (!positionsEnabled) return [];
-
-  const { accountAddress: address, nativeCurrency: currency } = store.getState().settings;
-  const positionsObj: RainbowPositions | undefined = queryClient.getQueryData(positionsQueryKey({ address, currency }));
-
+const withPositionsSection = (positionsObj: RainbowPositions | undefined, isLoadingUserAssets: boolean) => {
   const result: PositionExtraData[] = [];
-  const sortedPositions = positionsObj?.positions?.sort((a, b) => (a.totals.totals.amount > b.totals.totals.amount ? -1 : 1));
+  const sortedPositions = positionsObj?.positions?.sort((a, b) => {
+    return lessThan(b.totals.totals.amount, a.totals.totals.amount) ? -1 : 1;
+  });
+
   sortedPositions?.forEach((position, index) => {
     const listData = {
       type: 'POSITION',
@@ -102,26 +125,72 @@ const withPositionsSection = (isLoadingUserAssets: boolean) => {
   return [];
 };
 
+const withClaimablesSection = (
+  claimables: Claimable[] | undefined,
+  ethRewardsEnabled: boolean,
+  claimableETHRewardsNativeAmount: string | undefined,
+  isLoadingUserAssets: boolean
+) => {
+  const { nativeCurrency: currency } = store.getState().settings;
+
+  const ethRewards = {
+    value: { nativeAsset: { amount: claimableETHRewardsNativeAmount } },
+    uniqueId: 'rainbow-eth-rewards',
+  };
+
+  const result: ClaimableExtraData[] = [];
+  let totalNativeValue = '0';
+
+  const sortedClaimables = [
+    ...(claimables ?? []),
+    ...(ethRewardsEnabled && claimableETHRewardsNativeAmount && claimableETHRewardsNativeAmount !== '0' ? [ethRewards] : []),
+  ]?.sort((a, b) => (greaterThan(a.value.nativeAsset.amount ?? '0', b.value.nativeAsset.amount ?? '0') ? -1 : 1));
+
+  sortedClaimables?.forEach(claimable => {
+    totalNativeValue = add(totalNativeValue, claimable.value.nativeAsset.amount ?? '0');
+    const listData = {
+      type: 'CLAIMABLE',
+      uniqueId: claimable.uniqueId,
+      uid: `claimable-${claimable.uniqueId}`,
+    };
+    result.push(listData);
+  });
+  const totalNativeDisplay = convertAmountToNativeDisplay(totalNativeValue, currency);
+  if (result.length && !isLoadingUserAssets) {
+    const res = [
+      {
+        type: 'CLAIMABLES_SPACE_BEFORE',
+        uid: 'claimables-header-space-before',
+      },
+      {
+        type: 'CLAIMABLES_HEADER',
+        uid: 'claimables-header',
+        total: totalNativeDisplay,
+      },
+      {
+        type: 'CLAIMABLES_SPACE_AFTER',
+        uid: 'claimables-header-space-before',
+      },
+      ...result,
+    ];
+
+    return res;
+  }
+  return [];
+};
+
 const withBriefBalanceSection = (
   sortedAssets: ParsedAddressAsset[],
   isLoadingUserAssets: boolean,
+  isLoadingBalance: boolean,
+  accountBalanceDisplay: string | undefined,
   nativeCurrency: NativeCurrencyKey,
   isCoinListEdited: boolean,
   pinnedCoins: any,
-  hiddenCoins: any,
-  collectibles: any,
-  nftSort: string
+  hiddenAssets: Set<UniqueId>,
+  collectibles: any
 ) => {
-  const { briefAssets, totalBalancesValue } = buildBriefCoinsList(sortedAssets, nativeCurrency, isCoinListEdited, pinnedCoins, hiddenCoins);
-
-  const { accountAddress: address } = store.getState().settings;
-  const positionsObj: RainbowPositions | undefined = queryClient.getQueryData(positionsQueryKey({ address, currency: nativeCurrency }));
-
-  const positionsTotal = positionsObj?.totals?.total?.amount || '0';
-
-  const totalBalanceWithPositionsValue = add(totalBalancesValue, positionsTotal);
-
-  const totalValue = convertAmountToNativeDisplay(totalBalanceWithPositionsValue, nativeCurrency);
+  const { briefAssets } = buildBriefCoinsList(sortedAssets, nativeCurrency, isCoinListEdited, pinnedCoins, hiddenAssets);
 
   const hasTokens = briefAssets?.length;
   const hasNFTs = collectibles?.length;
@@ -133,8 +202,6 @@ const withBriefBalanceSection = (
     {
       type: 'PROFILE_STICKY_HEADER',
       uid: 'assets-profile-header-compact',
-      value: totalValue,
-      isLoadingUserAssets,
     },
     {
       type: 'PROFILE_AVATAR_ROW_SPACE_BEFORE',
@@ -156,13 +223,14 @@ const withBriefBalanceSection = (
       type: 'PROFILE_NAME_ROW_SPACE_AFTER',
       uid: 'profile-name-space-after',
     },
-    ...(!hasTokens && !isLoadingUserAssets
+    ...(!hasTokens && !isLoadingBalance
       ? []
       : [
           {
             type: 'PROFILE_BALANCE_ROW',
             uid: 'profile-balance',
-            value: totalValue,
+            value: accountBalanceDisplay,
+            isLoadingBalance,
           },
           {
             type: 'PROFILE_BALANCE_ROW_SPACE_AFTER',
@@ -172,13 +240,13 @@ const withBriefBalanceSection = (
     {
       type: 'PROFILE_ACTION_BUTTONS_ROW',
       uid: 'profile-action-buttons',
-      value: totalValue,
+      value: accountBalanceDisplay,
     },
     hasTokens
       ? {
           type: 'PROFILE_ACTION_BUTTONS_ROW_SPACE_AFTER',
           uid: 'profile-action-buttons-space-after',
-          value: totalValue,
+          value: accountBalanceDisplay,
         }
       : { type: 'BIG_EMPTY_WALLET_SPACER', uid: 'big-empty-wallet-spacer-1' },
   ];
@@ -217,7 +285,8 @@ const briefUniqueTokenDataSelector = createSelector(
     hiddenTokensSelector,
     listTypeSelector,
     isReadOnlyWalletSelector,
-    (state: any, nftSort: string) => nftSort,
+    nftSortSelector,
+    isFetchingNftsSelector,
   ],
   buildBriefUniqueTokenList
 );
@@ -226,16 +295,26 @@ const briefBalanceSectionSelector = createSelector(
   [
     sortedAssetsSelector,
     isLoadingUserAssetsSelector,
+    isLoadingBalanceSelector,
+    accountBalanceDisplaySelector,
     nativeCurrencySelector,
     isCoinListEditedSelector,
     pinnedCoinsSelector,
-    hiddenCoinsSelector,
+    hiddenAssetsSelector,
     uniqueTokensSelector,
   ],
   withBriefBalanceSection
 );
 
 export const buildBriefWalletSectionsSelector = createSelector(
-  [briefBalanceSectionSelector, (state: any, nftSort: string) => briefUniqueTokenDataSelector(state, nftSort)],
+  [
+    briefBalanceSectionSelector,
+    (state: any) => briefUniqueTokenDataSelector(state),
+    remoteConfigSelector,
+    experimentalConfigSelector,
+    positionsSelector,
+    claimablesSelector,
+    claimableETHRewardsNativeAmountSelector,
+  ],
   buildBriefWalletSections
 );

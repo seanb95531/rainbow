@@ -1,14 +1,14 @@
 import { RainbowTransaction, NewTransaction } from '@/entities/transactions';
 import { createStore } from '../internal/createStore';
 import create from 'zustand';
-import { parseNewTransaction } from '@/parsers/transactions';
-import { Network } from '@/networks/types';
+import { convertNewTransactionToRainbowTransaction } from '@/parsers/transactions';
 import { nonceStore } from '../nonces';
+import { ChainId } from '@/state/backendNetworks/types';
 
 export interface PendingTransactionsState {
   pendingTransactions: Record<string, RainbowTransaction[]>;
+  getPendingTransactionsInReverseOrder: (address: string) => RainbowTransaction[];
   addPendingTransaction: ({ address, pendingTransaction }: { address: string; pendingTransaction: RainbowTransaction }) => void;
-  updatePendingTransaction: ({ address, pendingTransaction }: { address: string; pendingTransaction: RainbowTransaction }) => void;
   setPendingTransactions: ({ address, pendingTransactions }: { address: string; pendingTransactions: RainbowTransaction[] }) => void;
   clearPendingTransactions: () => void;
 }
@@ -16,32 +16,34 @@ export interface PendingTransactionsState {
 export const pendingTransactionsStore = createStore<PendingTransactionsState>(
   (set, get) => ({
     pendingTransactions: {},
+    getPendingTransactionsInReverseOrder: address => {
+      const { pendingTransactions } = get();
+      const pendingTransactionsForAddress = pendingTransactions[address] || [];
+      // returns pending txns for display from most recent to oldest
+      const orderedPendingTransactions = [...pendingTransactionsForAddress].sort((a, b) => {
+        return (b.nonce || 0) - (a.nonce || 0);
+      });
+      return orderedPendingTransactions;
+    },
     addPendingTransaction: ({ address, pendingTransaction }) => {
       const { pendingTransactions: currentPendingTransactions } = get();
       const addressPendingTransactions = currentPendingTransactions[address] || [];
-      set({
-        pendingTransactions: {
-          ...currentPendingTransactions,
-          [address]: [...addressPendingTransactions, pendingTransaction],
-        },
+      const updatedPendingTransactions = [
+        ...addressPendingTransactions.filter(tx => {
+          if (tx.chainId === pendingTransaction.chainId) {
+            return tx.nonce !== pendingTransaction.nonce;
+          }
+          return true;
+        }),
+        pendingTransaction,
+      ];
+      const orderedPendingTransactions = updatedPendingTransactions.sort((a, b) => {
+        return (a.nonce || 0) - (b.nonce || 0);
       });
-    },
-    updatePendingTransaction: ({ address, pendingTransaction }) => {
-      const { pendingTransactions: currentPendingTransactions } = get();
-      const addressPendingTransactions = currentPendingTransactions[address] || [];
-
       set({
         pendingTransactions: {
           ...currentPendingTransactions,
-          [address]: [
-            ...addressPendingTransactions.filter(tx => {
-              if (tx.network === pendingTransaction.network) {
-                return tx.nonce !== pendingTransaction.nonce;
-              }
-              return true;
-            }),
-            pendingTransaction,
-          ],
+          [address]: orderedPendingTransactions,
         },
       });
     },
@@ -70,40 +72,40 @@ export const usePendingTransactionsStore = create(pendingTransactionsStore);
 
 export const addNewTransaction = ({
   address,
-  network,
+  chainId,
   transaction,
 }: {
   address: string;
-  network: Network;
+  chainId: ChainId;
   transaction: NewTransaction;
 }) => {
   const { addPendingTransaction } = pendingTransactionsStore.getState();
-  const { setNonce } = nonceStore.getState();
-  const parsedTransaction = parseNewTransaction(transaction);
+  const { getNonce, setNonce } = nonceStore.getState();
+  const parsedTransaction = convertNewTransactionToRainbowTransaction(transaction);
   addPendingTransaction({ address, pendingTransaction: parsedTransaction });
-  setNonce({
-    address,
-    network,
-    currentNonce: transaction.nonce,
-  });
+  const localNonceData = getNonce({ address, chainId });
+  const localNonce = localNonceData?.currentNonce || -1;
+  if (transaction.nonce > localNonce) {
+    setNonce({
+      address,
+      chainId,
+      currentNonce: transaction.nonce,
+    });
+  }
 };
 
 export const updateTransaction = ({
   address,
-  network,
+  chainId,
   transaction,
 }: {
   address: string;
-  network: Network;
+  chainId: ChainId;
   transaction: NewTransaction;
 }) => {
-  const { updatePendingTransaction } = pendingTransactionsStore.getState();
-  const { setNonce } = nonceStore.getState();
-  const parsedTransaction = parseNewTransaction(transaction);
-  updatePendingTransaction({ address, pendingTransaction: parsedTransaction });
-  setNonce({
+  addNewTransaction({
     address,
-    network,
-    currentNonce: transaction.nonce,
+    chainId,
+    transaction,
   });
 };

@@ -1,11 +1,9 @@
-import { AddressZero } from '@ethersproject/constants';
-import isValidDomain from 'is-valid-domain';
-
-import { ETH_ADDRESS, SupportedCurrencyKey } from '@/references';
+import { SupportedCurrencyKey } from '@/references';
 import {
   AddressOrEth,
   AssetApiResponse,
   AssetMetadata,
+  AssetType,
   ParsedAsset,
   ParsedSearchAsset,
   ParsedUserAsset,
@@ -13,43 +11,30 @@ import {
   ZerionAsset,
   ZerionAssetPrice,
 } from '@/__swaps__/types/assets';
-import { ChainId, ChainName } from '@/__swaps__/types/chains';
+import { ChainId, ChainName } from '@/state/backendNetworks/types';
 
 import * as i18n from '@/languages';
 import { SearchAsset } from '@/__swaps__/types/search';
 
-import { chainIdFromChainName, chainNameFromChainId, customChainIdsToAssetNames, isNativeAsset } from '@/__swaps__/utils/chains';
+import { isNativeAsset } from '@/handlers/assets';
 import {
   convertAmountAndPriceToNativeDisplay,
   convertAmountToBalanceDisplay,
   convertAmountToNativeDisplayWorklet,
   convertAmountToPercentageDisplay,
   convertRawAmountToDecimalFormat,
-} from '@/__swaps__/utils/numbers';
-import { isLowerCaseMatch, isLowerCaseMatchWorklet } from '@/__swaps__/utils/strings';
+} from '@/helpers/utilities';
+import { isLowerCaseMatch } from '@/utils';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { RainbowToken } from '@/entities';
+import { userAssetsStore } from '@/state/assets/userAssets';
 
 export const isSameAsset = (a1: Pick<ParsedAsset, 'chainId' | 'address'>, a2: Pick<ParsedAsset, 'chainId' | 'address'>) =>
   +a1.chainId === +a2.chainId && isLowerCaseMatch(a1.address, a2.address);
 
-export const isSameAssetWorklet = (a1: Pick<ParsedAsset, 'chainId' | 'address'>, a2: Pick<ParsedAsset, 'chainId' | 'address'>) => {
-  'worklet';
-  return +a1.chainId === +a2.chainId && isLowerCaseMatchWorklet(a1.address, a2.address);
-};
-
 const get24HrChange = (priceData?: ZerionAssetPrice) => {
   const twentyFourHrChange = priceData?.relative_change_24h;
   return twentyFourHrChange ? convertAmountToPercentageDisplay(twentyFourHrChange) : '';
-};
-
-export const getCustomChainIconUrl = (chainId: ChainId, address: AddressOrEth) => {
-  if (!chainId || !customChainIdsToAssetNames[chainId]) return '';
-  const baseUrl = 'https://raw.githubusercontent.com/rainbow-me/assets/master/blockchains/';
-
-  if (address === AddressZero || address === ETH_ADDRESS) {
-    return `${baseUrl}${customChainIdsToAssetNames[chainId]}/info/logo.png`;
-  } else {
-    return `${baseUrl}${customChainIdsToAssetNames[chainId]}/assets/${address}/logo.png`;
-  }
 };
 
 export const getNativeAssetPrice = ({ priceData, currency }: { priceData?: ZerionAssetPrice; currency: SupportedCurrencyKey }) => {
@@ -80,7 +65,10 @@ const getUniqueIdForAsset = ({ asset }: { asset: ZerionAsset | AssetApiResponse 
   const address = asset.asset_code;
   const chainName = asset.network ?? ChainName.mainnet;
   const networks = 'networks' in asset ? asset.networks || {} : {};
-  const chainId = ('chain_id' in asset && asset.chain_id) || chainIdFromChainName(chainName) || Number(Object.keys(networks)[0]);
+  const chainId =
+    ('chain_id' in asset && asset.chain_id) ||
+    useBackendNetworksStore.getState().getChainsIdByName()[chainName] ||
+    Number(Object.keys(networks)[0]);
 
   // ZerionAsset should be removed when we move fully away from websckets/refraction api
   const mainnetAddress = isZerionAsset(asset)
@@ -94,7 +82,10 @@ export function parseAsset({ asset, currency }: { asset: ZerionAsset | AssetApiR
   const address = asset.asset_code;
   const chainName = asset.network ?? ChainName.mainnet;
   const networks = 'networks' in asset ? asset.networks || {} : {};
-  const chainId = ('chain_id' in asset && asset.chain_id) || chainIdFromChainName(chainName) || Number(Object.keys(networks)[0]);
+  const chainId =
+    ('chain_id' in asset && asset.chain_id) ||
+    useBackendNetworksStore.getState().getChainsIdByName()[chainName] ||
+    Number(Object.keys(networks)[0]);
 
   // ZerionAsset should be removed when we move fully away from websckets/refraction api
   const mainnetAddress = isZerionAsset(asset)
@@ -121,7 +112,7 @@ export function parseAsset({ asset, currency }: { asset: ZerionAsset | AssetApiR
     symbol: asset.symbol,
     type: asset.type,
     decimals: asset.decimals,
-    icon_url: asset.icon_url || getCustomChainIconUrl(chainId, address),
+    icon_url: asset.icon_url,
     colors: asset.colors,
     standard,
     ...('networks' in asset && { networks: asset.networks }),
@@ -172,7 +163,7 @@ export function parseAssetMetadata({
   const parsedAsset = {
     address,
     chainId,
-    chainName: chainNameFromChainId(chainId),
+    chainName: useBackendNetworksStore.getState().getChainsName()[chainId],
     colors: asset?.colors,
     decimals: asset?.decimals,
     icon_url: asset?.iconUrl,
@@ -246,43 +237,12 @@ export function parseUserAssetBalances({
   };
 }
 
-export function parseParsedUserAsset({
-  parsedAsset,
-  currency,
-  quantity,
-}: {
-  parsedAsset: ParsedUserAsset;
-  currency: SupportedCurrencyKey;
-  quantity: string;
-}): ParsedUserAsset {
-  const amount = convertRawAmountToDecimalFormat(quantity, parsedAsset?.decimals);
-  return {
-    ...parsedAsset,
-    balance: {
-      amount,
-      display: convertAmountToBalanceDisplay(amount, {
-        decimals: parsedAsset?.decimals,
-        symbol: parsedAsset?.symbol,
-      }),
-    },
-    native: {
-      ...parsedAsset.native,
-      balance: getNativeAssetBalance({
-        currency,
-        decimals: parsedAsset?.decimals,
-        priceUnit: parsedAsset?.price?.value || 0,
-        value: amount,
-      }),
-    },
-  };
-}
-
 export const parseSearchAsset = ({
   assetWithPrice,
   searchAsset,
   userAsset,
 }: {
-  assetWithPrice?: ParsedAsset;
+  assetWithPrice?: Partial<ParsedAsset>;
   searchAsset: ParsedSearchAsset | SearchAsset;
   userAsset?: ParsedUserAsset;
 }): ParsedSearchAsset => ({
@@ -290,13 +250,13 @@ export const parseSearchAsset = ({
   isNativeAsset: isNativeAsset(searchAsset.address, searchAsset.chainId),
   address: searchAsset.address,
   chainId: searchAsset.chainId,
-  chainName: chainNameFromChainId(searchAsset.chainId),
+  chainName: useBackendNetworksStore.getState().getChainsName()[searchAsset.chainId],
   native: {
     balance: userAsset?.native.balance || {
       amount: '0',
       display: '0.00',
     },
-    price: assetWithPrice?.native.price || userAsset?.native?.price,
+    price: assetWithPrice?.native?.price || userAsset?.native?.price,
   },
   price: assetWithPrice?.price || userAsset?.price,
   balance: userAsset?.balance || { amount: '0', display: '0.00' },
@@ -305,50 +265,37 @@ export const parseSearchAsset = ({
   type: userAsset?.type || assetWithPrice?.type || searchAsset?.type,
 });
 
-export function filterAsset(asset: ZerionAsset) {
-  const nameFragments = asset?.name?.split(' ');
-  const nameContainsURL = nameFragments.some(f => isValidDomain(f));
-  const symbolFragments = asset?.symbol?.split(' ');
-  const symbolContainsURL = symbolFragments.some(f => isValidDomain(f));
-  const shouldFilter = nameContainsURL || symbolContainsURL;
-  return shouldFilter;
+export function transformRainbowTokenToParsedSearchAsset(asset: RainbowToken): ParsedSearchAsset {
+  const chainsIdByName = useBackendNetworksStore.getState().getChainsIdByName();
+  const chainsName = useBackendNetworksStore.getState().getChainsName();
+  const chainId = asset.chainId || chainsIdByName[asset.network];
+  const uniqueId = `${asset.address}_${chainId}`;
+  const userAsset = userAssetsStore.getState().userAssets.get(uniqueId);
+
+  return parseSearchAsset({
+    assetWithPrice: {
+      ...asset,
+      uniqueId,
+      address: asset.address as AddressOrEth,
+      type: asset.type as AssetType,
+      chainId,
+      chainName: chainsName[chainId],
+      isNativeAsset: false,
+      native: {},
+    },
+    searchAsset: {
+      ...asset,
+      uniqueId,
+      chainId,
+      chainName: chainsName[chainId],
+      address: asset.address as AddressOrEth,
+      highLiquidity: asset.highLiquidity ?? false,
+      isRainbowCurated: asset.isRainbowCurated ?? false,
+      isVerified: asset.isVerified ?? false,
+      mainnetAddress: (asset.mainnet_address ?? '') as AddressOrEth,
+      networks: asset.networks ?? [],
+      type: asset.type as AssetType,
+    },
+    userAsset,
+  });
 }
-
-const assetQueryFragment = (
-  address: AddressOrEth,
-  chainId: ChainId,
-  currency: SupportedCurrencyKey,
-  index: number,
-  withPrice?: boolean
-) => {
-  const priceQuery = withPrice ? 'price { value relativeChange24h }' : '';
-  return `Q${index}: token(address: "${address}", chainID: ${chainId}, currency: "${currency}") {
-      colors {
-        primary
-        fallback
-        shadow
-      }
-      decimals
-      iconUrl
-      name
-      networks
-      symbol
-      ${priceQuery}
-  }`;
-};
-
-export const chunkArray = <TItem>(arr: TItem[], chunkSize: number) => {
-  const result = [];
-
-  for (let i = 0; i < arr.length; i += chunkSize) {
-    result.push(arr.slice(i, i + chunkSize));
-  }
-
-  return result;
-};
-
-export const createAssetQuery = (addresses: AddressOrEth[], chainId: ChainId, currency: SupportedCurrencyKey, withPrice?: boolean) => {
-  return `{
-        ${addresses.map((a, i) => assetQueryFragment(a, chainId, currency, i, withPrice)).join(',')}
-    }`;
-};

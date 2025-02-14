@@ -1,26 +1,29 @@
 import { AnimatedText, Box, Column, Columns, Stack, useColorMode } from '@/design-system';
 import MaskedView from '@react-native-masked-view/masked-view';
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StatusBar, StyleSheet } from 'react-native';
-import Animated, { runOnJS, useDerivedValue } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedReaction, useDerivedValue } from 'react-native-reanimated';
 import { ScreenCornerRadius } from 'react-native-screen-corner-radius';
 
 import { AnimatedSwapCoinIcon } from '@/__swaps__/screens/Swap/components/AnimatedSwapCoinIcon';
 import { BalanceBadge } from '@/__swaps__/screens/Swap/components/BalanceBadge';
+import { SwapNativeInput } from '@/__swaps__/screens/Swap/components/SwapNativeInput';
+import { SwapInputValuesCaret } from '@/__swaps__/screens/Swap/components/SwapInputValuesCaret';
 import { FadeMask } from '@/__swaps__/screens/Swap/components/FadeMask';
-import { GestureHandlerV1Button } from '@/__swaps__/screens/Swap/components/GestureHandlerV1Button';
+import { GestureHandlerButton } from '@/__swaps__/screens/Swap/components/GestureHandlerButton';
 import { SwapActionButton } from '@/__swaps__/screens/Swap/components/SwapActionButton';
 import { SwapInput } from '@/__swaps__/screens/Swap/components/SwapInput';
 import { TokenList } from '@/__swaps__/screens/Swap/components/TokenList/TokenList';
 import { BASE_INPUT_WIDTH, INPUT_INNER_WIDTH, INPUT_PADDING, THICK_BORDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
 import { IS_ANDROID, IS_IOS } from '@/env';
 import { useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
-import { ChainId } from '@/__swaps__/types/chains';
+import { ChainId } from '@/state/backendNetworks/types';
 import * as i18n from '@/languages';
 import { useNavigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import { useSwapsStore } from '@/state/swaps/swapsStore';
-import { ethereumUtils } from '@/utils';
+import Clipboard from '@react-native-clipboard/clipboard';
+import { CopyPasteMenu } from './CopyPasteMenu';
 
 const SELECT_LABEL = i18n.t(i18n.l.swap.select);
 const NO_BALANCE_LABEL = i18n.t(i18n.l.swap.no_balance);
@@ -37,6 +40,7 @@ function SwapOutputActionButton() {
 
   return (
     <SwapActionButton
+      testID="swap-output-asset-action-button"
       asset={internalSelectedOutputAsset}
       disableShadow={isDarkMode}
       hugContent
@@ -48,58 +52,63 @@ function SwapOutputActionButton() {
   );
 }
 
-function SwapOutputAmount() {
-  const { navigate } = useNavigation();
-  const { focusedInput, SwapTextStyles, SwapInputController, AnimatedSwapStyles, outputQuotesAreDisabled } = useSwapContext();
+function SwapOutputAmount({ handleTapWhileDisabled }: { handleTapWhileDisabled: () => void }) {
+  const { focusedInput, SwapTextStyles, SwapInputController, outputQuotesAreDisabled } = useSwapContext();
 
-  const handleTapWhileDisabled = useCallback(() => {
-    const { inputAsset, outputAsset } = useSwapsStore.getState();
-    const inputTokenSymbol = inputAsset?.symbol;
-    const outputTokenSymbol = outputAsset?.symbol;
-    const inputNetwork = ethereumUtils.getNetworkFromChainId(inputAsset?.chainId ?? ChainId.mainnet);
-    const outputNetwork = ethereumUtils.getNetworkFromChainId(outputAsset?.chainId ?? ChainId.mainnet);
-    const isCrosschainSwap = inputAsset?.chainId !== outputAsset?.chainId;
-    const isBridgeSwap = inputTokenSymbol === outputTokenSymbol;
-
-    navigate(Routes.EXPLAIN_SHEET, {
-      inputToken: inputTokenSymbol,
-      fromNetwork: inputNetwork,
-      toNetwork: outputNetwork,
-      isCrosschainSwap,
-      isBridgeSwap,
-      outputToken: outputTokenSymbol,
-      type: 'output_disabled',
-    });
-  }, [navigate]);
+  const [isPasteEnabled, setIsPasteEnabled] = useState(() => !outputQuotesAreDisabled.value);
+  useAnimatedReaction(
+    () => !outputQuotesAreDisabled.value,
+    v => {
+      'worklet';
+      runOnJS(setIsPasteEnabled)(v);
+    },
+    []
+  );
 
   return (
-    <GestureHandlerV1Button
-      disableButtonPressWrapper
-      onPressStartWorklet={() => {
-        'worklet';
-        if (outputQuotesAreDisabled.value) {
-          runOnJS(handleTapWhileDisabled)();
-        } else {
-          focusedInput.value = 'outputAmount';
-        }
-      }}
+    <CopyPasteMenu
+      onCopy={() => Clipboard.setString(SwapInputController.formattedOutputAmount.value)}
+      onPaste={
+        isPasteEnabled
+          ? text => {
+              const numericValue = text && +text.replaceAll(',', '');
+              if (!numericValue) return;
+              SwapInputController.inputMethod.value = 'outputAmount';
+              SwapInputController.inputValues.modify(values => {
+                'worklet';
+                return { ...values, outputAmount: numericValue };
+              });
+            }
+          : undefined
+      }
     >
-      <MaskedView maskElement={<FadeMask fadeEdgeInset={2} fadeWidth={8} height={36} side="right" />} style={styles.inputTextMask}>
-        <AnimatedText ellipsizeMode="clip" numberOfLines={1} size="30pt" style={SwapTextStyles.outputAmountTextStyle} weight="bold">
-          {SwapInputController.formattedOutputAmount}
-        </AnimatedText>
-        <Animated.View style={[styles.caretContainer, SwapTextStyles.outputCaretStyle]}>
-          <Box as={Animated.View} borderRadius={1} style={[styles.caret, AnimatedSwapStyles.assetToBuyCaretStyle]} />
-        </Animated.View>
-      </MaskedView>
-    </GestureHandlerV1Button>
+      <GestureHandlerButton
+        disableHaptics
+        disableScale
+        onPressWorklet={() => {
+          'worklet';
+          if (outputQuotesAreDisabled.value) {
+            runOnJS(handleTapWhileDisabled)();
+          } else {
+            focusedInput.value = 'outputAmount';
+          }
+        }}
+      >
+        <MaskedView maskElement={<FadeMask fadeEdgeInset={2} fadeWidth={8} height={36} side="right" />} style={styles.inputTextMask}>
+          <AnimatedText ellipsizeMode="clip" numberOfLines={1} size="30pt" style={SwapTextStyles.outputAmountTextStyle} weight="bold">
+            {SwapInputController.formattedOutputAmount}
+          </AnimatedText>
+          <SwapInputValuesCaret inputCaretType="outputAmount" />
+        </MaskedView>
+      </GestureHandlerButton>
+    </CopyPasteMenu>
   );
 }
 
 function SwapOutputIcon() {
   return (
     <Box paddingRight="10px">
-      <AnimatedSwapCoinIcon assetType="output" large />
+      <AnimatedSwapCoinIcon assetType="output" size={36} chainSize={16} />
     </Box>
   );
 }
@@ -119,15 +128,26 @@ function OutputAssetBalanceBadge() {
 }
 
 export function SwapOutputAsset() {
-  const {
-    outputProgress,
-    inputProgress,
-    AnimatedSwapStyles,
-    SwapTextStyles,
-    SwapInputController,
-    internalSelectedOutputAsset,
-    SwapNavigation,
-  } = useSwapContext();
+  const { outputProgress, inputProgress, AnimatedSwapStyles, internalSelectedOutputAsset, SwapNavigation } = useSwapContext();
+  const { navigate } = useNavigation();
+
+  const handleTapWhileDisabled = useCallback(() => {
+    const { inputAsset, outputAsset } = useSwapsStore.getState();
+    const inputTokenSymbol = inputAsset?.symbol;
+    const outputTokenSymbol = outputAsset?.symbol;
+    const isCrosschainSwap = inputAsset?.chainId !== outputAsset?.chainId;
+    const isBridgeSwap = inputTokenSymbol === outputTokenSymbol;
+
+    navigate(Routes.EXPLAIN_SHEET, {
+      inputToken: inputTokenSymbol,
+      fromChainId: inputAsset?.chainId ?? ChainId.mainnet,
+      toChainId: outputAsset?.chainId ?? ChainId.mainnet,
+      isCrosschainSwap,
+      isBridgeSwap,
+      outputToken: outputTokenSymbol,
+      type: 'output_disabled',
+    });
+  }, [navigate]);
 
   return (
     <SwapInput asset={internalSelectedOutputAsset} bottomInput otherInputProgress={inputProgress} progress={outputProgress}>
@@ -137,15 +157,13 @@ export function SwapOutputAsset() {
             <Column width="content">
               <SwapOutputIcon />
             </Column>
-            <SwapOutputAmount />
+            <SwapOutputAmount handleTapWhileDisabled={handleTapWhileDisabled} />
             <Column width="content">
               <SwapOutputActionButton />
             </Column>
           </Columns>
           <Columns alignHorizontal="justify" alignVertical="center" space="10px">
-            <AnimatedText numberOfLines={1} size="17pt" style={SwapTextStyles.outputNativeValueStyle} weight="heavy">
-              {SwapInputController.formattedOutputNativeValue}
-            </AnimatedText>
+            <SwapNativeInput nativeInputType="outputNativeValue" handleTapWhileDisabled={handleTapWhileDisabled} />
             <Column width="content">
               <OutputAssetBalanceBadge />
             </Column>
@@ -174,14 +192,6 @@ export function SwapOutputAsset() {
 export const styles = StyleSheet.create({
   backgroundOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.88)',
-  },
-  caret: {
-    height: 32,
-    width: 2,
-  },
-  caretContainer: {
-    flexGrow: 100,
-    flexShrink: 0,
   },
   flipButton: {
     borderRadius: 15,

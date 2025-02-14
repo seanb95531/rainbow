@@ -1,13 +1,11 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Network } from '@/networks/types';
+import { ChainId } from '@/state/backendNetworks/types';
 import { borders, fonts } from '@/styles';
-import { ThemeContextProps } from '@/theme';
+import { useTheme } from '@/theme';
 import { FallbackIcon as CoinIconTextFallback } from '@/utils';
-
 import { FastFallbackCoinIconImage } from '../asset-list/RecyclerAssetList2/FastComponents/FastFallbackCoinIconImage';
-import { FastChainBadge } from '../asset-list/RecyclerAssetList2/FastComponents/FastCoinBadge';
-import { TokenColors } from '@/graphql/__generated__/metadata';
+import { ChainImage } from './ChainImage';
 
 const fallbackTextStyles = {
   fontFamily: fonts.family.SFProRounded,
@@ -23,33 +21,36 @@ const fallbackIconStyle = (size: number) => ({
 });
 
 export default React.memo(function RainbowCoinIcon({
-  size = 40,
+  chainId,
+  color,
+  forceDarkMode,
   icon,
-  network,
+  showBadge = chainId !== ChainId.mainnet,
+  size = 40,
   symbol,
-  theme,
-  colors,
-  ignoreBadge,
-  badgeXPosition,
-  badgeYPosition,
+  chainSize = size / 2,
+  chainBadgePosition = { x: -chainSize / 2, y: 0 },
 }: {
   size?: number;
   icon?: string;
-  network: Network;
+  chainId: ChainId;
   symbol: string;
-  theme: ThemeContextProps;
-  colors?: TokenColors;
-  ignoreBadge?: boolean;
-  badgeXPosition?: number;
-  badgeYPosition?: number;
+  forceDarkMode?: boolean;
+  color?: string;
+  showBadge?: boolean;
+  chainSize?: number;
+  chainBadgePosition?: {
+    x?: number;
+    y?: number;
+  };
 }) {
-  const fallbackIconColor = colors?.primary || colors?.fallback || theme.colors.purpleUniswap;
-
-  const shadowColor = theme.isDarkMode ? theme.colors.shadow : colors?.primary || colors?.fallback || theme.colors.shadow;
+  const theme = useTheme();
+  const fallbackIconColor = color ?? theme.colors.purpleUniswap;
+  const shadowColor = theme.isDarkMode || forceDarkMode ? theme.colors.shadow : color || fallbackIconColor;
 
   return (
-    <View style={sx.container}>
-      <FastFallbackCoinIconImage network={network} icon={icon} shadowColor={shadowColor} symbol={symbol} theme={theme} size={size}>
+    <View style={[sx.container, { height: size }]}>
+      <FastFallbackCoinIconImage icon={icon} shadowColor={shadowColor} symbol={symbol} theme={theme} size={size}>
         {() => (
           <CoinIconTextFallback
             color={fallbackIconColor}
@@ -62,7 +63,13 @@ export default React.memo(function RainbowCoinIcon({
         )}
       </FastFallbackCoinIconImage>
 
-      {!ignoreBadge && network && <FastChainBadge network={network} theme={theme} />}
+      <ChainImage
+        showBadge={showBadge}
+        chainId={chainId}
+        size={chainSize}
+        badgeXPosition={chainBadgePosition?.x}
+        badgeYPosition={chainBadgePosition?.y}
+      />
     </View>
   );
 });
@@ -71,18 +78,5 @@ const sx = StyleSheet.create({
   container: {
     elevation: 6,
     overflow: 'visible',
-  },
-  reactCoinIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  withShadow: {
-    elevation: 6,
-    shadowOffset: {
-      height: 4,
-      width: 0,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
   },
 });

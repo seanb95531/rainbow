@@ -1,6 +1,14 @@
-import { FlashList } from '@shopify/flash-list';
-import React, { memo, useCallback, useMemo } from 'react';
-import Animated, { runOnUI, useAnimatedProps, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { FlatList } from 'react-native';
+import { COIN_ROW_WITH_PADDING_HEIGHT, CoinRow } from '@/__swaps__/screens/Swap/components/CoinRow';
+import { ListEmpty } from '@/__swaps__/screens/Swap/components/TokenList/ListEmpty';
+import { AssetToBuySectionId, useSearchCurrencyLists } from '@/__swaps__/screens/Swap/hooks/useSearchCurrencyLists';
+import { useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
+import { ChainId } from '@/state/backendNetworks/types';
+import { SearchAsset } from '@/__swaps__/types/search';
+import { SwapAssetType } from '@/__swaps__/types/swap';
+import { parseSearchAsset } from '@/__swaps__/utils/assets';
+import { getChainColorWorklet } from '@/__swaps__/utils/swaps';
+import { getUniqueId } from '@/utils/ethereumUtils';
 import { analyticsV2 } from '@/analytics';
 import { AnimatedTextIcon } from '@/components/AnimatedComponents/AnimatedTextIcon';
 import { TIMING_CONFIGS } from '@/components/animations/animationConfigs';
@@ -9,18 +17,12 @@ import { palettes } from '@/design-system/color/palettes';
 import * as i18n from '@/languages';
 import { userAssetsStore } from '@/state/assets/userAssets';
 import { swapsStore } from '@/state/swaps/swapsStore';
-import { COIN_ROW_WITH_PADDING_HEIGHT, CoinRow } from '@/__swaps__/screens/Swap/components/CoinRow';
-import { ListEmpty } from '@/__swaps__/screens/Swap/components/TokenList/ListEmpty';
-import { AssetToBuySectionId, useSearchCurrencyLists } from '@/__swaps__/screens/Swap/hooks/useSearchCurrencyLists';
-import { useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
-import { ChainId } from '@/__swaps__/types/chains';
-import { SearchAsset } from '@/__swaps__/types/search';
-import { SwapAssetType } from '@/__swaps__/types/swap';
-import { parseSearchAsset } from '@/__swaps__/utils/assets';
-import { getChainColorWorklet, getStandardizedUniqueIdWorklet } from '@/__swaps__/utils/swaps';
 import { DEVICE_WIDTH } from '@/utils/deviceUtils';
+import React, { memo, useCallback, useMemo, useState } from 'react';
+import Animated, { runOnUI, useAnimatedProps, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { EXPANDED_INPUT_HEIGHT, FOCUSED_INPUT_HEIGHT } from '../../constants';
 import { ChainSelection } from './ChainSelection';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 export const BUY_LIST_HEADER_HEIGHT = 20 + 10 + 8; // paddingTop + height + paddingBottom
 
@@ -31,6 +33,16 @@ interface SectionHeaderProp {
 }
 
 const SECTION_HEADER_INFO: { [id in AssetToBuySectionId]: SectionHeaderProp } = {
+  popular: {
+    title: i18n.t(i18n.l.token_search.section_header.popular),
+    symbol: '􀙬',
+    color: 'rgba(255, 88, 77, 1)',
+  },
+  recent: {
+    title: i18n.t(i18n.l.token_search.section_header.recent),
+    symbol: '􀐫',
+    color: 'rgba(38, 143, 255, 1)',
+  },
   favorites: {
     title: i18n.t(i18n.l.token_search.section_header.favorites),
     symbol: '􀋃',
@@ -62,17 +74,41 @@ export type HeaderItem = { listItemType: 'header'; id: AssetToBuySectionId; data
 export type CoinRowItem = SearchAsset & { listItemType: 'coinRow'; sectionId: AssetToBuySectionId };
 export type TokenToBuyListItem = HeaderItem | CoinRowItem;
 
+const getItemLayout = (data: ArrayLike<TokenToBuyListItem> | null | undefined, index: number) => {
+  if (!data) return { length: 0, offset: 0, index };
+
+  const item = data[index];
+  const length = item?.listItemType === 'header' ? BUY_LIST_HEADER_HEIGHT : COIN_ROW_WITH_PADDING_HEIGHT;
+
+  // Count headers up to this index
+  let headerCount = 0;
+  for (let i = 0; i < index; i++) {
+    if (data[i]?.listItemType === 'header') {
+      headerCount += 1;
+    }
+  }
+
+  const coinRowCount = index - headerCount;
+  const offset = headerCount * BUY_LIST_HEADER_HEIGHT + coinRowCount * COIN_ROW_WITH_PADDING_HEIGHT;
+
+  return { length, offset, index };
+};
+
 export const TokenToBuyList = () => {
   const { internalSelectedInputAsset, internalSelectedOutputAsset, isFetching, isQuoteStale, outputProgress, setAsset } = useSwapContext();
-  const { results: sections } = useSearchCurrencyLists();
+  const { results: sections, isLoading } = useSearchCurrencyLists();
+
+  const [supportedChainsBooleanMap] = useState(
+    useBackendNetworksStore
+      .getState()
+      .getSupportedChainIds()
+      .reduce((acc, chainId) => ({ ...acc, [chainId]: true }), {} as Record<ChainId, boolean>)
+  );
 
   const handleSelectToken = useCallback(
     (token: SearchAsset) => {
       runOnUI(() => {
-        if (
-          internalSelectedInputAsset.value &&
-          getStandardizedUniqueIdWorklet({ address: token.address, chainId: token.chainId }) !== internalSelectedOutputAsset.value?.uniqueId
-        ) {
+        if (internalSelectedInputAsset.value && getUniqueId(token.address, token.chainId) !== internalSelectedOutputAsset.value?.uniqueId) {
           isQuoteStale.value = 1;
           isFetching.value = true;
         }
@@ -116,26 +152,22 @@ export const TokenToBuyList = () => {
     };
   });
 
-  const averageItemSize = useMemo(() => {
-    const numberOfHeaders = sections.filter(section => section.listItemType === 'header').length;
-    const numberOfCoinRows = sections.filter(section => section.listItemType === 'coinRow').length;
-    const totalHeight = numberOfHeaders * BUY_LIST_HEADER_HEIGHT + numberOfCoinRows * COIN_ROW_WITH_PADDING_HEIGHT;
-    return totalHeight / (numberOfHeaders + numberOfCoinRows);
-  }, [sections]);
+  if (isLoading) return null;
+
+  const getFormattedTestId = (name: string, chainId: ChainId) => {
+    return `token-to-buy-${name}-${chainId}`.toLowerCase().replace(/\s+/g, '-');
+  };
 
   return (
-    <Box style={{ height: EXPANDED_INPUT_HEIGHT - 77, width: DEVICE_WIDTH - 24 }}>
-      <FlashList
+    <Box style={{ height: EXPANDED_INPUT_HEIGHT - 77, width: DEVICE_WIDTH - 24 }} testID={'token-to-buy-list'}>
+      <ChainSelection output />
+      <FlatList
+        keyboardShouldPersistTaps="always"
         ListEmptyComponent={<ListEmpty output />}
         ListFooterComponent={<Animated.View style={[animatedListPadding, { width: '100%' }]} />}
-        ListHeaderComponent={<ChainSelection output />}
         contentContainerStyle={{ paddingBottom: 16 }}
-        // For some reason shallow copying the list data allows FlashList to more quickly pick up changes
-        data={sections.slice(0)}
-        estimatedFirstItemOffset={BUY_LIST_HEADER_HEIGHT}
-        estimatedItemSize={averageItemSize}
-        estimatedListSize={{ height: EXPANDED_INPUT_HEIGHT - 77, width: DEVICE_WIDTH - 24 }}
-        getItemType={item => item.listItemType}
+        data={sections}
+        getItemLayout={getItemLayout}
         keyExtractor={item => `${item.listItemType}-${item.listItemType === 'coinRow' ? item.uniqueId : item.id}`}
         renderItem={({ item }) => {
           if (item.listItemType === 'header') {
@@ -143,12 +175,14 @@ export const TokenToBuyList = () => {
           }
           return (
             <CoinRow
+              testID={getFormattedTestId(item.name, item.chainId)}
               address={item.address}
               chainId={item.chainId}
               colors={item.colors}
               icon_url={item.icon_url}
               // @ts-expect-error item.favorite does not exist - it does for favorites, need to fix the type
               isFavorite={item.favorite}
+              isSupportedChain={supportedChainsBooleanMap[item.chainId] ?? false}
               mainnetAddress={item.mainnetAddress}
               name={item.name}
               onPress={() => handleSelectToken(item)}

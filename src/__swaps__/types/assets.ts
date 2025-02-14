@@ -1,7 +1,7 @@
 import type { Address } from 'viem';
 
 import { ETH_ADDRESS } from '@/references';
-import { ChainId, ChainName } from '@/__swaps__/types/chains';
+import { ChainId, ChainName } from '@/state/backendNetworks/types';
 import { SearchAsset } from '@/__swaps__/types/search';
 import { ResponseByTheme } from '../utils/swaps';
 
@@ -28,7 +28,7 @@ export interface ExtendedAnimatedAssetWithColors extends ParsedSearchAsset {
 export interface ParsedAsset {
   address: AddressOrEth;
   chainId: ChainId;
-  chainName: ChainName;
+  chainName: string;
   colors?: {
     primary?: string;
     fallback?: string;
@@ -140,6 +140,7 @@ export interface ZerionAsset {
     bridgeable: boolean;
     networks: { [id in ChainId]?: { bridgeable: boolean } };
   };
+  defi_position?: boolean;
 }
 
 // protocols https://github.com/rainbow-me/go-utils-lib/blob/master/pkg/enums/token_type.go#L44

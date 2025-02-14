@@ -20,11 +20,11 @@ import { useAccountAccentColor } from '@/hooks/useAccountAccentColor';
 import { useRoute } from '@react-navigation/native';
 import * as i18n from '@/languages';
 import { ButtonPressAnimationTouchEvent } from '@/components/animations/ButtonPressAnimation/types';
+import { ChainImage } from '@/components/coin-icon/ChainImage';
 import { useExternalToken } from '@/resources/assets/externalAssetsQuery';
 import assetTypes from '@/entities/assetTypes';
-import { Network } from '@/networks/types';
+import { Network, ChainId } from '@/state/backendNetworks/types';
 import { getUniqueId } from '@/utils/ethereumUtils';
-import { EthCoinIcon } from '../coin-icon/EthCoinIcon';
 
 export const ETH_CARD_HEIGHT = 284.3;
 
@@ -35,7 +35,7 @@ export const EthCard = () => {
   const { isDamaged } = useWallets();
   const { data: externalEthAsset } = useExternalToken({
     address: ETH_ADDRESS,
-    network: Network.mainnet,
+    chainId: ChainId.mainnet,
     currency: nativeCurrency,
   });
 
@@ -44,7 +44,8 @@ export const EthCard = () => {
       ...externalEthAsset,
       address: ETH_ADDRESS,
       network: Network.mainnet,
-      uniqueId: getUniqueId(ETH_ADDRESS, Network.mainnet),
+      chainId: ChainId.mainnet,
+      uniqueId: getUniqueId(ETH_ADDRESS, ChainId.mainnet),
     }),
     [externalEthAsset]
   );
@@ -75,9 +76,10 @@ export const EthCard = () => {
   );
 
   const handleAssetPress = useCallback(() => {
-    navigate(Routes.EXPANDED_ASSET_SHEET, {
+    navigate(Routes.EXPANDED_ASSET_SHEET_V2, {
       asset: ethAsset,
-      type: 'token',
+      address: ETH_ADDRESS,
+      chainId: ChainId.mainnet,
     });
     analyticsV2.track(analyticsV2.event.cardPressed, {
       cardName: 'EthCard',
@@ -133,12 +135,7 @@ export const EthCard = () => {
   const { f2c_enabled: addCashEnabled } = useRemoteConfig();
 
   return (
-    <GenericCard
-      /** @ts-ignore */
-      onPress={IS_IOS ? handleAssetPress : handlePressBuy}
-      type={cardType}
-      testID="eth-card"
-    >
+    <GenericCard onPress={IS_IOS ? handleAssetPress : handlePressBuy} type={cardType} testID="eth-card">
       <Stack space={{ custom: 41 }}>
         <Stack space="12px">
           <Bleed top="4px">
@@ -159,7 +156,7 @@ export const EthCard = () => {
                   </>
                 ) : (
                   <>
-                    <EthCoinIcon size={20} />
+                    <ChainImage chainId={ChainId.mainnet} position="relative" size={20} />
                     <Text size="17pt" color={{ custom: colorForAsset }} weight="heavy">
                       {ethAsset?.name}
                     </Text>

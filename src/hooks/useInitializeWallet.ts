@@ -12,26 +12,25 @@ import { settingsLoadNetwork, settingsUpdateAccountAddress } from '../redux/sett
 import { walletsLoadState } from '../redux/wallets';
 import useAccountSettings from './useAccountSettings';
 import useHideSplashScreen from './useHideSplashScreen';
-import useInitializeAccountData from './useInitializeAccountData';
 import useLoadAccountData from './useLoadAccountData';
 import useLoadGlobalEarlyData from './useLoadGlobalEarlyData';
 import useOpenSmallBalances from './useOpenSmallBalances';
-import useResetAccountState from './useResetAccountState';
 import { WrappedAlert as Alert } from '@/helpers/alert';
-import { PROFILES, useExperimentalFlag } from '@/config';
 import { runKeychainIntegrityChecks } from '@/handlers/walletReadyEvents';
 import { RainbowError, logger } from '@/logger';
+import { getOrCreateDeviceId, getWalletContext } from '@/analytics/utils';
+import * as Sentry from '@sentry/react-native';
+import { analyticsV2 } from '@/analytics';
+import { Address } from 'viem';
 
 export default function useInitializeWallet() {
   const dispatch = useDispatch();
-  const resetAccountState = useResetAccountState();
+
   const loadAccountData = useLoadAccountData();
   const loadGlobalEarlyData = useLoadGlobalEarlyData();
-  const initializeAccountData = useInitializeAccountData();
   const { network } = useAccountSettings();
   const hideSplashScreen = useHideSplashScreen();
   const { setIsSmallBalancesOpen } = useOpenSmallBalances();
-  const profilesEnabled = useExperimentalFlag(PROFILES);
 
   const getWalletStatusForPerformanceMetrics = (isNew: boolean, isImporting: boolean): string => {
     if (isNew) {
@@ -60,19 +59,17 @@ export default function useInitializeWallet() {
     ) => {
       try {
         PerformanceTracking.startMeasuring(PerformanceMetrics.useInitializeWallet);
-        logger.debug('Start wallet setup');
-        await resetAccountState();
-        logger.debug('resetAccountState ran ok');
+        logger.debug('[useInitializeWallet]: Start wallet setup');
 
         const isImporting = !!seedPhrase;
-        logger.debug('isImporting? ' + isImporting);
+        logger.debug(`[useInitializeWallet]: isImporting? ${isImporting}`);
 
         if (shouldRunMigrations && !seedPhrase) {
-          logger.debug('shouldRunMigrations && !seedPhrase? => true');
-          await dispatch(walletsLoadState(profilesEnabled));
-          logger.debug('walletsLoadState call #1');
+          logger.debug('[useInitializeWallet]: shouldRunMigrations && !seedPhrase? => true');
+          await dispatch(walletsLoadState());
+          logger.debug('[useInitializeWallet]: walletsLoadState call #1');
           await runMigrations();
-          logger.debug('done with migrations');
+          logger.debug('[useInitializeWallet]: done with migrations');
         }
 
         setIsSmallBalancesOpen(false);
@@ -82,10 +79,26 @@ export default function useInitializeWallet() {
 
         const { isNew, walletAddress } = await walletInit(seedPhrase, color, name, overwrite, checkedWallet, network, image, silent);
 
-        logger.debug('walletInit returned', {
+        logger.debug('[useInitializeWallet]: walletInit returned', {
           isNew,
           walletAddress,
         });
+
+        // Capture wallet context in telemetry
+        // walletType maybe undefied after initial wallet creation
+        const { walletType, walletAddressHash } = await getWalletContext(walletAddress as Address);
+        const [deviceId] = await getOrCreateDeviceId();
+
+        Sentry.setUser({
+          id: deviceId,
+          walletAddressHash,
+          walletType,
+        });
+
+        // Allows calling telemetry before currentAddress is available (i.e. onboarding)
+        if (walletType || walletAddressHash) analyticsV2.setWalletContext({ walletAddressHash, walletType });
+        analyticsV2.setDeviceId(deviceId);
+        analyticsV2.identify();
 
         if (!switching) {
           // Run keychain integrity checks right after walletInit
@@ -94,12 +107,12 @@ export default function useInitializeWallet() {
         }
 
         if (seedPhrase || isNew) {
-          logger.debug('walletLoadState call #2');
-          await dispatch(walletsLoadState(profilesEnabled));
+          logger.debug('[useInitializeWallet]: walletsLoadState call #2');
+          await dispatch(walletsLoadState());
         }
 
         if (isNil(walletAddress)) {
-          logger.debug('walletAddress is nil');
+          logger.debug('[useInitializeWallet]: walletAddress is nil');
           Alert.alert(lang.t('wallet.import_failed_invalid_private_key'));
           if (!isImporting) {
             dispatch(appStateUpdate({ walletReady: true }));
@@ -109,18 +122,18 @@ export default function useInitializeWallet() {
 
         if (!(isNew || isImporting)) {
           await loadGlobalEarlyData();
-          logger.debug('loaded global data...');
+          logger.debug('[useInitializeWallet]: loaded global data...');
         }
 
         await dispatch(settingsUpdateAccountAddress(walletAddress));
-        logger.debug('updated settings address', {
+        logger.debug('[useInitializeWallet]: updated settings address', {
           walletAddress,
         });
 
         // Newly created / imported accounts have no data in localstorage
         if (!(isNew || isImporting)) {
           await loadAccountData();
-          logger.debug('loaded account data', {
+          logger.debug('[useInitializeWallet]: loaded account data', {
             network,
           });
         }
@@ -128,15 +141,13 @@ export default function useInitializeWallet() {
         try {
           hideSplashScreen();
         } catch (err) {
-          logger.error(new RainbowError('Error while hiding splash screen'), {
+          logger.error(new RainbowError('[useInitializeWallet]: Error while hiding splash screen'), {
             error: err,
           });
         }
 
-        initializeAccountData();
-
         dispatch(appStateUpdate({ walletReady: true }));
-        logger.debug('💰 Wallet initialized');
+        logger.debug('[useInitializeWallet]: 💰 Wallet initialized');
 
         PerformanceTracking.finishMeasuring(PerformanceMetrics.useInitializeWallet, {
           walletStatus: getWalletStatusForPerformanceMetrics(isNew, isImporting),
@@ -145,7 +156,7 @@ export default function useInitializeWallet() {
         return walletAddress;
       } catch (error) {
         PerformanceTracking.clearMeasure(PerformanceMetrics.useInitializeWallet);
-        logger.error(new RainbowError('Error while initializing wallet'), {
+        logger.error(new RainbowError('[useInitializeWallet]: Error while initializing wallet'), {
           error,
         });
         // TODO specify error states more granular
@@ -156,7 +167,7 @@ export default function useInitializeWallet() {
         try {
           hideSplashScreen();
         } catch (err) {
-          logger.error(new RainbowError('Error while hiding splash screen'), {
+          logger.error(new RainbowError('[useInitializeWallet]: Error while hiding splash screen'), {
             error: err,
           });
         }
@@ -167,17 +178,7 @@ export default function useInitializeWallet() {
         return null;
       }
     },
-    [
-      dispatch,
-      hideSplashScreen,
-      initializeAccountData,
-      loadAccountData,
-      loadGlobalEarlyData,
-      network,
-      profilesEnabled,
-      resetAccountState,
-      setIsSmallBalancesOpen,
-    ]
+    [dispatch, hideSplashScreen, loadAccountData, loadGlobalEarlyData, network, setIsSmallBalancesOpen]
   );
 
   return initializeWallet;

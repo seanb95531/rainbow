@@ -3,12 +3,12 @@ import { useRoute } from '@react-navigation/native';
 import { toChecksumAddress } from 'ethereumjs-util';
 import lang from 'i18n-js';
 import * as i18n from '@/languages';
-import { capitalize, isEmpty } from 'lodash';
+import { isEmpty } from 'lodash';
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ContactRowInfoButton from '../components/ContactRowInfoButton';
-import Divider from '../components/Divider';
+import Divider from '@/components/Divider';
 import L2Disclaimer from '../components/L2Disclaimer';
 import Pill from '../components/Pill';
 import TouchableBackdrop from '../components/TouchableBackdrop';
@@ -36,7 +36,7 @@ import {
   formatRecordsForTransaction,
 } from '@/handlers/ens';
 import svgToPngIfNeeded from '@/handlers/svgs';
-import { estimateGasLimit } from '@/handlers/web3';
+import { estimateGasLimit, getProvider } from '@/handlers/web3';
 import { removeFirstEmojiFromString, returnStringFirstEmoji } from '@/helpers/emojiHandler';
 import { add, convertAmountToNativeDisplay } from '@/helpers/utilities';
 import { isENSAddressFormat, isValidDomainFormat } from '@/helpers/validators';
@@ -56,11 +56,13 @@ import styled from '@/styled-thing';
 import { position } from '@/styles';
 import { useTheme } from '@/theme';
 import { getUniqueTokenType, promiseUtils } from '@/utils';
-import logger from '@/utils/logger';
-import { getNetworkObj } from '@/networks';
-import { IS_ANDROID } from '@/env';
+import { logger, RainbowError } from '@/logger';
+import { IS_ANDROID, IS_IOS } from '@/env';
 import { useConsolidatedTransactions } from '@/resources/transactions/consolidatedTransactions';
 import RainbowCoinIcon from '@/components/coin-icon/RainbowCoinIcon';
+import { performanceTracking, TimeToSignOperation, Screens } from '@/state/performance/performance';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 const Container = styled(Centered).attrs({
   direction: 'column',
@@ -96,12 +98,12 @@ const checkboxOffset = 44;
 export function getDefaultCheckboxes({
   isENS,
   ensProfile,
-  network,
+  chainId,
   toAddress,
 }: {
   isENS: boolean;
   ensProfile: ENSProfile;
-  network: string;
+  chainId: ChainId;
   toAddress: string;
 }): Checkbox[] {
   if (isENS) {
@@ -131,7 +133,7 @@ export function getDefaultCheckboxes({
       checked: false,
       id: 'has-wallet-that-supports',
       label: lang.t('wallet.transaction.checkboxes.has_a_wallet_that_supports', {
-        networkName: capitalize(network),
+        networkName: useBackendNetworksStore.getState().getChainsLabel()[chainId],
       }),
     },
   ];
@@ -194,7 +196,7 @@ export const SendConfirmationSheet = () => {
   }, []);
 
   const {
-    params: { amountDetails, asset, callback, ensProfile, isL2, isNft, network, to, toAddress },
+    params: { amountDetails, asset, callback, ensProfile, isL2, isNft, chainId, to, toAddress },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useRoute<any>();
 
@@ -228,7 +230,7 @@ export const SendConfirmationSheet = () => {
       transactions.forEach(tx => {
         if (tx.to?.toLowerCase() === toAddress?.toLowerCase() && tx.from?.toLowerCase() === accountAddress?.toLowerCase()) {
           sends += 1;
-          if (tx.network === network) {
+          if (tx.chainId === chainId) {
             sendsCurrentNetwork += 1;
           }
         }
@@ -240,7 +242,7 @@ export const SendConfirmationSheet = () => {
         }
       }
     }
-  }, [accountAddress, isSendingToUserAccount, network, toAddress, transactions]);
+  }, [accountAddress, isSendingToUserAccount, chainId, toAddress, transactions]);
 
   const contact = useMemo(() => {
     return contacts?.[toAddress?.toLowerCase()];
@@ -249,9 +251,10 @@ export const SendConfirmationSheet = () => {
   const uniqueTokenType = getUniqueTokenType(asset);
   const isENS = uniqueTokenType === 'ENS' && profilesEnabled;
 
-  const [checkboxes, setCheckboxes] = useState<Checkbox[]>(getDefaultCheckboxes({ ensProfile, isENS, network, toAddress }));
+  const [checkboxes, setCheckboxes] = useState<Checkbox[]>(getDefaultCheckboxes({ ensProfile, isENS, chainId, toAddress }));
 
   useEffect(() => {
+    const provider = getProvider({ chainId });
     if (isENS) {
       const promises = [
         estimateGasLimit(
@@ -261,7 +264,8 @@ export const SendConfirmationSheet = () => {
             asset: asset,
             recipient: toAddress,
           },
-          true
+          true,
+          provider
         ),
       ];
       const sendENSOptions = Object.fromEntries(checkboxes.map(option => [option.id, option.checked])) as {
@@ -317,13 +321,14 @@ export const SendConfirmationSheet = () => {
           updateTxFee(gasLimit, null);
         })
         .catch(e => {
-          logger.sentry('Error calculating gas limit', e);
+          logger.error(new RainbowError(`[SendConfirmationSheet]: error calculating gas limit: ${e}`));
           updateTxFee(null, null);
         });
     }
   }, [
     accountAddress,
     asset,
+    chainId,
     checkboxes,
     ensProfile?.data?.coinAddresses,
     ensProfile?.data?.contenthash,
@@ -350,9 +355,10 @@ export const SendConfirmationSheet = () => {
 
   const handleL2DisclaimerPress = useCallback(() => {
     navigate(Routes.EXPLAIN_SHEET, {
-      type: asset.network,
+      type: 'network',
+      chainId,
     });
-  }, [asset.network, navigate]);
+  }, [chainId, navigate]);
 
   const nativeDisplayAmount = useMemo(
     () => convertAmountToNativeDisplay(amountDetails.nativeAmount, nativeCurrency),
@@ -376,25 +382,33 @@ export const SendConfirmationSheet = () => {
 
   const insufficientEth = isSufficientGas === false && isValidGas;
 
-  const handleSubmit = useCallback(async () => {
-    if (!canSubmit) return;
-    try {
-      setIsAuthorizing(true);
-      if (isENS) {
-        const clearRecords = checkboxes.some(({ checked, id }) => checked && id === 'clear-records');
-        const setAddress = checkboxes.some(({ checked, id }) => checked && id === 'set-address');
-        const transferControl = checkboxes.some(({ checked, id }) => checked && id === 'transfer-control');
-        await callback({
-          ens: { clearRecords, setAddress, transferControl },
-        });
-      } else {
-        await callback();
-      }
-    } catch (e) {
-      logger.sentry('TX submit failed', e);
-      setIsAuthorizing(false);
-    }
-  }, [callback, canSubmit, checkboxes, isENS]);
+  const handleSubmit = useCallback(
+    () =>
+      performanceTracking.getState().executeFn({
+        fn: async () => {
+          if (!canSubmit) return;
+          try {
+            setIsAuthorizing(true);
+            if (isENS) {
+              const clearRecords = checkboxes.some(({ checked, id }) => checked && id === 'clear-records');
+              const setAddress = checkboxes.some(({ checked, id }) => checked && id === 'set-address');
+              const transferControl = checkboxes.some(({ checked, id }) => checked && id === 'transfer-control');
+              await callback({
+                ens: { clearRecords, setAddress, transferControl },
+              });
+            } else {
+              await callback();
+            }
+          } catch (e) {
+            logger.error(new RainbowError(`[SendConfirmationSheet]: error submitting transaction: ${e}`));
+            setIsAuthorizing(false);
+          }
+        },
+        operation: TimeToSignOperation.CallToAction,
+        screen: isENS ? Screens.SEND_ENS : Screens.SEND,
+      })(),
+    [callback, canSubmit, checkboxes, isENS]
+  );
 
   const existingAccount = useMemo(() => {
     let existingAcct = null;
@@ -410,7 +424,7 @@ export const SendConfirmationSheet = () => {
     return existingAcct;
   }, [toAddress, userAccounts, watchedAccounts]);
 
-  let avatarName = removeFirstEmojiFromString(existingAccount?.label || contact?.nickname);
+  let avatarName = removeFirstEmojiFromString(contact?.nickname || existingAccount?.label);
 
   if (!avatarName) {
     if (isValidDomainFormat(to)) {
@@ -457,8 +471,7 @@ export const SendConfirmationSheet = () => {
 
   return (
     <Container deviceHeight={deviceHeight} height={contentHeight} insets={insets}>
-      {/* @ts-expect-error JavaScript component */}
-      {ios && <TouchableBackdrop onPress={goBack} />}
+      {IS_IOS && <TouchableBackdrop onPress={goBack} />}
 
       <SlackSheet additionalTopPadding={IS_ANDROID} contentHeight={contentHeight} scrollEnabled={false}>
         <SheetTitle>{lang.t('wallet.transaction.sending_title')}</SheetTitle>
@@ -487,22 +500,20 @@ export const SendConfirmationSheet = () => {
                     // @ts-expect-error JavaScript component
                     <RequestVendorLogoIcon
                       backgroundColor={asset.background || theme.colors.lightestGrey}
-                      badgeXPosition={-7}
-                      badgeYPosition={0}
                       borderRadius={10}
+                      chainId={asset?.chainId}
                       imageUrl={imageUrl}
-                      network={asset.network}
                       showLargeShadow
                       size={50}
                     />
                   ) : (
                     <RainbowCoinIcon
-                      size={50}
+                      chainId={asset?.chainId}
+                      chainSize={20}
+                      color={asset?.colors?.primary || asset?.colors?.fallback || undefined}
                       icon={asset?.icon_url}
-                      network={asset?.network}
+                      size={50}
                       symbol={asset?.symbol || ''}
-                      theme={theme}
-                      colors={asset?.colors}
                     />
                   )}
                 </Row>
@@ -540,7 +551,7 @@ export const SendConfirmationSheet = () => {
                         address: toAddress,
                         name: avatarName || address(to, 4, 8),
                       }}
-                      network={network}
+                      chainId={chainId}
                       scaleTo={0.75}
                     >
                       <Text
@@ -573,7 +584,6 @@ export const SendConfirmationSheet = () => {
                 )}
               </Column>
             </Row>
-            {/* @ts-expect-error JavaScript component */}
             <Divider color={theme.colors.rowDividerExtraLight} inset={[0]} />
           </Column>
           {(isL2 || isENS || shouldShowChecks) && (
@@ -581,9 +591,8 @@ export const SendConfirmationSheet = () => {
               <Stack space="19px (Deprecated)">
                 {isL2 && (
                   <Fragment>
-                    {/* @ts-expect-error JavaScript component */}
                     <L2Disclaimer
-                      network={asset.network}
+                      chainId={asset.chainId}
                       colors={theme.colors}
                       hideDivider
                       marginBottom={0}
@@ -591,7 +600,7 @@ export const SendConfirmationSheet = () => {
                       onPress={handleL2DisclaimerPress}
                       prominent
                       customText={i18n.t(i18n.l.expanded_state.asset.l2_disclaimer_send, {
-                        network: getNetworkObj(asset.network).name,
+                        network: useBackendNetworksStore.getState().getChainsLabel()[asset.chainId],
                       })}
                       symbol={asset.symbol}
                     />
@@ -659,10 +668,7 @@ export const SendConfirmationSheet = () => {
               testID="send-confirmation-button"
             />
           </SendButtonWrapper>
-          {isENS && (
-            /* @ts-expect-error JavaScript component */
-            <GasSpeedButton currentNetwork={network} theme={theme.isDarkMode ? 'dark' : 'light'} />
-          )}
+          {isENS && <GasSpeedButton chainId={chainId} theme={theme.isDarkMode ? 'dark' : 'light'} />}
         </Column>
       </SlackSheet>
     </Container>

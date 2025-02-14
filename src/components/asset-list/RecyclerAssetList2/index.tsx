@@ -16,9 +16,7 @@ import { ProfileNameRow } from './profile-header/ProfileNameRow';
 import AndroidContextMenu from '@/components/context-menu/ContextMenu.android';
 import ContextMenuButton from '@/components/native-context-menu/contextMenu';
 import { analytics } from '@/analytics';
-import useWalletConnectConnections from '@/hooks/useWalletConnectConnections';
 import lang from 'i18n-js';
-import { useWalletConnectV2Sessions } from '@/walletConnect/hooks/useWalletConnectV2Sessions';
 import { IS_ANDROID } from '@/env';
 
 export type AssetListType = 'wallet' | 'ens-profile' | 'select-nft';
@@ -150,9 +148,6 @@ function NavbarOverlay({ accentColor, position }: { accentColor?: string; positi
 
   // ////////////////////////////////////////////////////
   // Context Menu
-  const { mostRecentWalletConnectors } = useWalletConnectConnections();
-  const { sessions: activeWCV2Sessions } = useWalletConnectV2Sessions();
-
   const menuConfig = React.useMemo(
     () => ({
       menuItems: [
@@ -175,7 +170,7 @@ function NavbarOverlay({ accentColor, position }: { accentColor?: string; positi
       ].filter(Boolean),
       ...(ios ? { menuTitle: '' } : {}),
     }),
-    [activeWCV2Sessions.length, mostRecentWalletConnectors.length]
+    []
   );
 
   const handlePressMenuItem = React.useCallback(
@@ -260,7 +255,7 @@ function NavbarOverlay({ accentColor, position }: { accentColor?: string; positi
               </AndroidContextMenu>
             ) : (
               <ContextMenuButton menuConfig={menuConfig} onPressMenuItem={handlePressMenuItem}>
-                <Navbar.Item>
+                <Navbar.Item testID={'settings-menu'}>
                   <Navbar.TextIcon color={accentColor as string} icon="􀍠" />
                 </Navbar.Item>
               </ContextMenuButton>
@@ -272,7 +267,7 @@ function NavbarOverlay({ accentColor, position }: { accentColor?: string; positi
               as={RNAnimated.View}
               height={{ custom: navbarHeight }}
               justifyContent="center"
-              style={[walletNameStyle, { alignSelf: 'center', bottom: 2, zIndex: -1 }]}
+              style={[walletNameStyle, { alignSelf: 'center', bottom: 2 }]}
             >
               <ProfileNameRow variant="header" />
             </Box>

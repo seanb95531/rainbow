@@ -1,9 +1,6 @@
 import c from 'chroma-js';
 import { SharedValue, convertToRGBA, isColor } from 'react-native-reanimated';
 
-import * as i18n from '@/languages';
-import { globalColors } from '@/design-system';
-import { ForegroundColor, palettes } from '@/design-system/color/palettes';
 import {
   ETH_COLOR,
   ETH_COLOR_DARK,
@@ -12,33 +9,44 @@ import {
   SLIDER_WIDTH,
   STABLECOIN_MINIMUM_SIGNIFICANT_DECIMALS,
 } from '@/__swaps__/screens/Swap/constants';
-import { chainNameFromChainId, chainNameFromChainIdWorklet } from '@/__swaps__/utils/chains';
-import { ChainId, ChainName } from '@/__swaps__/types/chains';
-import { isLowerCaseMatchWorklet } from '@/__swaps__/utils/strings';
+import { globalColors } from '@/design-system';
+import { ForegroundColor, palettes } from '@/design-system/color/palettes';
 import { TokenColors } from '@/graphql/__generated__/metadata';
-import { RainbowConfig } from '@/model/remoteConfig';
+import * as i18n from '@/languages';
+import { DEFAULT_CONFIG, RainbowConfig } from '@/model/remoteConfig';
+import store from '@/redux/store';
+import { supportedNativeCurrencies } from '@/references';
 import { userAssetsStore } from '@/state/assets/userAssets';
 import { colors } from '@/styles';
 import { BigNumberish } from '@ethersproject/bignumber';
-import { CrosschainQuote, ETH_ADDRESS, Quote, QuoteParams, SwapType, WRAPPED_ASSET } from '@rainbow-me/swaps';
+import { CrosschainQuote, ETH_ADDRESS as ETH_ADDRESS_AGGREGATOR, Quote, QuoteParams } from '@rainbow-me/swaps';
 import { swapsStore } from '../../state/swaps/swapsStore';
-import { AddressOrEth, ExtendedAnimatedAssetWithColors, ParsedSearchAsset } from '../types/assets';
-import { inputKeys } from '../types/swap';
-import { convertAmountToRawAmount } from './numbers';
 import {
-  ceilWorklet,
   divWorklet,
   equalWorklet,
-  floorWorklet,
+  greaterThanOrEqualToWorklet,
+  isNumberStringWorklet,
   lessThanOrEqualToWorklet,
   mulWorklet,
+  orderOfMagnitudeWorklet,
   powWorklet,
   roundWorklet,
   toFixedWorklet,
-  greaterThanOrEqualToWorklet,
-  orderOfMagnitudeWorklet,
-  isNumberStringWorklet,
-} from '../safe-math/SafeMath';
+} from '@/safe-math/SafeMath';
+import { ExtendedAnimatedAssetWithColors, ParsedSearchAsset } from '../types/assets';
+import { inputKeys } from '../types/swap';
+import { valueBasedDecimalFormatter } from './decimalFormatter';
+import { convertAmountToRawAmount } from '@/helpers/utilities';
+import { ChainId } from '@/state/backendNetworks/types';
+import { getUniqueId } from '@/utils/ethereumUtils';
+
+// DO NOT REMOVE THESE COMMENTED ENV VARS
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { IS_APK_BUILD } from 'react-native-dotenv';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import isTestFlight from '@/helpers/isTestFlight';
+
+const DEFAULT_SLIPPAGE_BIPS = 500;
 
 // /---- 🎨 Color functions 🎨 ----/ //
 //
@@ -51,14 +59,14 @@ export type ResponseByTheme<T> = {
   dark: T;
 };
 
-export const getColorValueForTheme = <T>(values: ResponseByTheme<T> | undefined, isDarkMode: boolean, useDefaults = false) => {
+export const getColorValueForTheme = <T>(values: ResponseByTheme<T> | undefined, isDarkMode: boolean) => {
   if (!values) {
     return isDarkMode ? ETH_COLOR_DARK : ETH_COLOR;
   }
   return isDarkMode ? values.dark : values.light;
 };
 
-export const getColorValueForThemeWorklet = <T>(values: ResponseByTheme<T> | undefined, isDarkMode: boolean, useDefaults = true) => {
+export const getColorValueForThemeWorklet = <T>(values: ResponseByTheme<T> | undefined, isDarkMode: boolean) => {
   'worklet';
 
   if (!values) {
@@ -196,6 +204,8 @@ export const findNiceIncrement = (availableBalance: string | number | undefined)
 
 // /---- 🔵 Worklet utils 🔵 ----/ //
 //
+type nativeCurrencyType = typeof supportedNativeCurrencies;
+
 export function addCommasToNumber<T extends 0 | '0' | '0.00'>(number: string | number, fallbackValue: T = 0 as T): T | string {
   'worklet';
   if (isNaN(Number(number))) {
@@ -216,14 +226,25 @@ export function addCommasToNumber<T extends 0 | '0' | '0.00'>(number: string | n
   }
 }
 
+export const addSymbolToNativeDisplayWorklet = (value: number | string, nativeCurrency: keyof nativeCurrencyType): string => {
+  'worklet';
+
+  const nativeSelected = supportedNativeCurrencies?.[nativeCurrency];
+  const { symbol } = nativeSelected;
+
+  const nativeValueWithCommas = addCommasToNumber(value, '0');
+
+  return `${symbol}${nativeValueWithCommas}`;
+};
+
 export function clamp(value: number, lowerBound: number, upperBound: number) {
   'worklet';
   return Math.min(Math.max(lowerBound, value), upperBound);
 }
 
-export function stripCommas(value: string) {
+export function stripNonDecimalNumbers(value: string) {
   'worklet';
-  return value.replace(/,/g, '');
+  return value.replace(/[^0-9.]/g, '');
 }
 
 export function trimTrailingZeros(value: string) {
@@ -232,129 +253,43 @@ export function trimTrailingZeros(value: string) {
   return withTrimmedZeros.endsWith('.') ? withTrimmedZeros.slice(0, -1) : withTrimmedZeros;
 }
 
-export function precisionBasedOffMagnitude(amount: number | string, isStablecoin = false): number {
-  'worklet';
-
-  const magnitude = -orderOfMagnitudeWorklet(amount);
-  // don't let stablecoins go beneath 2nd order
-  if (magnitude < -2 && isStablecoin) {
-    return -STABLECOIN_MINIMUM_SIGNIFICANT_DECIMALS;
-  }
-  return magnitude;
-}
-
-export function valueBasedDecimalFormatter({
-  amount,
-  nativePrice,
-  roundingMode,
-  precisionAdjustment,
-  isStablecoin,
-  stripSeparators = true,
-}: {
-  amount: number | string;
-  nativePrice: number;
-  roundingMode?: 'up' | 'down' | 'none';
-  precisionAdjustment?: number;
-  isStablecoin?: boolean;
-  stripSeparators?: boolean;
-}): string {
-  'worklet';
-
-  function calculateDecimalPlaces(): {
-    minimumDecimalPlaces: number;
-    maximumDecimalPlaces: number;
-  } {
-    if (nativePrice === 0) {
-      return {
-        minimumDecimalPlaces: 0,
-        maximumDecimalPlaces: MAXIMUM_SIGNIFICANT_DECIMALS,
-      };
-    }
-
-    const unitsForOneCent = 0.01 / nativePrice;
-    if (unitsForOneCent >= 1) {
-      return {
-        minimumDecimalPlaces: 0,
-        maximumDecimalPlaces: 0,
-      };
-    }
-
-    return {
-      minimumDecimalPlaces: isStablecoin ? STABLECOIN_MINIMUM_SIGNIFICANT_DECIMALS : 0,
-      maximumDecimalPlaces: Math.max(
-        Math.ceil(Math.log10(1 / unitsForOneCent)) + (precisionAdjustment ?? 0),
-        isStablecoin ? STABLECOIN_MINIMUM_SIGNIFICANT_DECIMALS : 0
-      ),
-    };
-  }
-
-  const { minimumDecimalPlaces, maximumDecimalPlaces } = calculateDecimalPlaces();
-
-  let roundedAmount;
-  const factor = Math.pow(10, maximumDecimalPlaces) || 1; // Prevent division by 0
-
-  // Apply rounding based on the specified rounding mode
-  if (roundingMode === 'up') {
-    roundedAmount = divWorklet(ceilWorklet(mulWorklet(amount, factor)), factor);
-  } else if (roundingMode === 'down') {
-    roundedAmount = divWorklet(floorWorklet(mulWorklet(amount, factor)), factor);
-  } else if (roundingMode === 'none') {
-    roundedAmount = toFixedWorklet(amount, maximumDecimalPlaces);
-  } else {
-    // Default to normal rounding if no rounding mode is specified
-    roundedAmount = divWorklet(roundWorklet(mulWorklet(amount, factor)), factor);
-  }
-
-  // Format the number to add separators and trim trailing zeros
-  const numberFormatter = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: minimumDecimalPlaces,
-    maximumFractionDigits: maximumDecimalPlaces,
-    useGrouping: !stripSeparators,
-  });
-
-  return numberFormatter.format(Number(roundedAmount));
-}
-
 export function niceIncrementFormatter({
-  incrementDecimalPlaces,
   inputAssetBalance,
   inputAssetNativePrice,
-  niceIncrement,
   percentageToSwap,
   sliderXPosition,
   stripSeparators,
   isStablecoin = false,
 }: {
-  incrementDecimalPlaces: number;
   inputAssetBalance: number | string;
   inputAssetNativePrice: number;
-  niceIncrement: number | string;
   percentageToSwap: number;
   sliderXPosition: number;
   stripSeparators?: boolean;
   isStablecoin?: boolean;
 }) {
   'worklet';
+  const niceIncrement = findNiceIncrement(inputAssetBalance);
+  const incrementDecimalPlaces = countDecimalPlaces(niceIncrement);
 
-  if (percentageToSwap === 0 || equalWorklet(niceIncrement, 0)) return '0';
+  if (percentageToSwap === 0 || equalWorklet(niceIncrement, 0)) return 0;
   if (percentageToSwap === 0.25) {
     const amount = mulWorklet(inputAssetBalance, 0.25);
     return valueBasedDecimalFormatter({
       nativePrice: inputAssetNativePrice,
+      niceIncrementMinimumDecimals: incrementDecimalPlaces,
       amount,
       roundingMode: 'up',
-      precisionAdjustment: precisionBasedOffMagnitude(amount, isStablecoin),
       isStablecoin,
     });
   }
   if (percentageToSwap === 0.5) {
     const amount = mulWorklet(inputAssetBalance, 0.5);
-    const precisionAdjustment = precisionBasedOffMagnitude(amount, isStablecoin);
     return valueBasedDecimalFormatter({
       nativePrice: inputAssetNativePrice,
+      niceIncrementMinimumDecimals: incrementDecimalPlaces,
       amount,
       roundingMode: 'up',
-      precisionAdjustment,
       isStablecoin,
     });
   }
@@ -362,9 +297,9 @@ export function niceIncrementFormatter({
     const amount = mulWorklet(inputAssetBalance, 0.75);
     return valueBasedDecimalFormatter({
       nativePrice: inputAssetNativePrice,
+      niceIncrementMinimumDecimals: incrementDecimalPlaces,
       amount,
       roundingMode: 'up',
-      precisionAdjustment: precisionBasedOffMagnitude(amount, isStablecoin),
       isStablecoin,
     });
   }
@@ -390,13 +325,13 @@ export function niceIncrementFormatter({
 
   const amountToFixedDecimals = toFixedWorklet(rawAmount, decimals);
 
-  const formattedAmount = `${Number(amountToFixedDecimals).toLocaleString('en-US', {
-    useGrouping: !stripSeparators,
+  const numberFormatter = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: MAXIMUM_SIGNIFICANT_DECIMALS,
-  })}`;
+    useGrouping: !stripSeparators,
+  });
 
-  return formattedAmount;
+  return numberFormatter.format(Number(amountToFixedDecimals));
 }
 
 export const opacityWorklet = (color: string, opacity: number) => {
@@ -412,18 +347,6 @@ export const opacityWorklet = (color: string, opacity: number) => {
 //
 // /---- END worklet utils ----/ //
 
-export const DEFAULT_SLIPPAGE_BIPS = {
-  [ChainId.mainnet]: 100,
-  [ChainId.polygon]: 200,
-  [ChainId.bsc]: 200,
-  [ChainId.optimism]: 200,
-  [ChainId.base]: 200,
-  [ChainId.zora]: 200,
-  [ChainId.arbitrum]: 200,
-  [ChainId.avalanche]: 200,
-  [ChainId.blast]: 200,
-};
-
 export const slippageInBipsToString = (slippageInBips: number) => (slippageInBips / 100).toFixed(1);
 
 export const slippageInBipsToStringWorklet = (slippageInBips: number) => {
@@ -432,37 +355,24 @@ export const slippageInBipsToStringWorklet = (slippageInBips: number) => {
 };
 
 export const getDefaultSlippage = (chainId: ChainId, config: RainbowConfig) => {
-  const chainName = chainNameFromChainId(chainId) as
-    | ChainName.mainnet
-    | ChainName.optimism
-    | ChainName.polygon
-    | ChainName.arbitrum
-    | ChainName.base
-    | ChainName.zora
-    | ChainName.bsc
-    | ChainName.avalanche;
-  return slippageInBipsToString(
-    // NOTE: JSON.parse doesn't type the result as a Record<ChainName, number>
-    (config.default_slippage_bips as unknown as Record<ChainName, number>)[chainName] || DEFAULT_SLIPPAGE_BIPS[chainId]
+  const amount = +(
+    (config.default_slippage_bips_chainId as unknown as { [key: number]: number })[chainId] ||
+    DEFAULT_CONFIG.default_slippage_bips_chainId[chainId] ||
+    DEFAULT_SLIPPAGE_BIPS
   );
+
+  return slippageInBipsToString(amount);
 };
 
 export const getDefaultSlippageWorklet = (chainId: ChainId, config: RainbowConfig) => {
   'worklet';
-
-  const chainName = chainNameFromChainIdWorklet(chainId) as
-    | ChainName.mainnet
-    | ChainName.optimism
-    | ChainName.polygon
-    | ChainName.arbitrum
-    | ChainName.base
-    | ChainName.zora
-    | ChainName.bsc
-    | ChainName.avalanche
-    | ChainName.blast;
-  return slippageInBipsToStringWorklet(
-    (config.default_slippage_bips as unknown as { [key: string]: number })[chainName] || DEFAULT_SLIPPAGE_BIPS[chainId]
+  const amount = +(
+    (config.default_slippage_bips_chainId as unknown as { [key: number]: number })[chainId] ||
+    DEFAULT_CONFIG.default_slippage_bips_chainId[chainId] ||
+    DEFAULT_SLIPPAGE_BIPS
   );
+
+  return slippageInBipsToStringWorklet(amount);
 };
 
 export type Colors = {
@@ -586,32 +496,6 @@ export const getCrossChainTimeEstimateWorklet = ({
   };
 };
 
-export const isUnwrapEthWorklet = ({
-  buyTokenAddress,
-  chainId,
-  sellTokenAddress,
-}: {
-  chainId: ChainId;
-  sellTokenAddress: string;
-  buyTokenAddress: string;
-}) => {
-  'worklet';
-  return isLowerCaseMatchWorklet(sellTokenAddress, WRAPPED_ASSET[chainId]) && isLowerCaseMatchWorklet(buyTokenAddress, ETH_ADDRESS);
-};
-
-export const isWrapEthWorklet = ({
-  buyTokenAddress,
-  chainId,
-  sellTokenAddress,
-}: {
-  chainId: ChainId;
-  sellTokenAddress: string;
-  buyTokenAddress: string;
-}) => {
-  'worklet';
-  return isLowerCaseMatchWorklet(sellTokenAddress, ETH_ADDRESS) && isLowerCaseMatchWorklet(buyTokenAddress, WRAPPED_ASSET[chainId]);
-};
-
 export const priceForAsset = ({
   asset,
   assetType,
@@ -650,11 +534,6 @@ const ETH_COLORS: Colors = {
   shadow: undefined,
 };
 
-export const getStandardizedUniqueIdWorklet = ({ address, chainId }: { address: AddressOrEth; chainId: ChainId }) => {
-  'worklet';
-  return `${address}_${chainId}`;
-};
-
 export const parseAssetAndExtend = ({
   asset,
   insertUserAssetBalance,
@@ -668,7 +547,7 @@ export const parseAssetAndExtend = ({
     colors: (isAssetEth ? ETH_COLORS : asset.colors) as TokenColors,
   });
 
-  const uniqueId = getStandardizedUniqueIdWorklet({ address: asset.address, chainId: asset.chainId });
+  const uniqueId = getUniqueId(asset.address, asset.chainId);
   const balance = insertUserAssetBalance ? userAssetsStore.getState().getUserAsset(uniqueId)?.balance || asset.balance : asset.balance;
 
   return {
@@ -714,13 +593,12 @@ export const buildQuoteParams = ({
 
   const isCrosschainSwap = inputAsset.chainId !== outputAsset.chainId;
 
-  return {
+  const quoteParams: QuoteParams = {
     source: source === 'auto' ? undefined : source,
     chainId: inputAsset.chainId,
     fromAddress: currentAddress,
-    sellTokenAddress: inputAsset.isNativeAsset ? ETH_ADDRESS : inputAsset.address,
-    buyTokenAddress: outputAsset.isNativeAsset ? ETH_ADDRESS : outputAsset.address,
-    // TODO: Handle native input cases below
+    sellTokenAddress: inputAsset.isNativeAsset ? ETH_ADDRESS_AGGREGATOR : inputAsset.address,
+    buyTokenAddress: outputAsset.isNativeAsset ? ETH_ADDRESS_AGGREGATOR : outputAsset.address,
     sellAmount:
       lastTypedInput === 'inputAmount' || lastTypedInput === 'inputNativeValue'
         ? convertAmountToRawAmount(inputAmount.toString(), inputAsset.decimals)
@@ -731,7 +609,12 @@ export const buildQuoteParams = ({
         : undefined,
     slippage: Number(slippage),
     refuel: false,
-    swapType: isCrosschainSwap ? SwapType.crossChain : SwapType.normal,
     toChainId: isCrosschainSwap ? outputAsset.chainId : inputAsset.chainId,
+    currency: store.getState().settings.nativeCurrency,
   };
+
+  // Do not delete the comment below 😤
+  // @ts-ignore About to get quote
+
+  return quoteParams;
 };

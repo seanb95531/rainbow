@@ -11,20 +11,19 @@ import { useNavigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import WalletTypes from '@/helpers/walletTypes';
 import { useAccountSettings, useAppState, useWallets } from '@/hooks';
-import { requestPermission } from '@/notifications/permissions';
+import { isNotificationPermissionGranted, requestNotificationPermission } from '@/notifications/permissions';
 import profileUtils from '@/utils/profileUtils';
 import { abbreviations, deviceUtils } from '@/utils';
 import { Box } from '@/design-system';
 import { removeFirstEmojiFromString, returnStringFirstEmoji } from '@/helpers/emojiHandler';
 import { RainbowAccount } from '@/model/wallet';
-import { isTestnetNetwork } from '@/handlers/web3';
+import { isTestnetChain } from '@/handlers/web3';
 import { useFocusEffect } from '@react-navigation/native';
 import { SettingsLoadingIndicator } from '@/screens/SettingsSheet/components/SettingsLoadingIndicator';
 import { showNotificationSubscriptionErrorAlert, showOfflineAlert } from '@/screens/SettingsSheet/components/notificationAlerts';
 import { useNetInfo } from '@react-native-community/netinfo';
 import {
   WalletNotificationRelationship,
-  updateSettingsForWalletsWithRelationshipType,
   useAllNotificationSettingsFromStorage,
   useWalletGroupNotificationSettings,
   WalletNotificationSettings,
@@ -157,8 +156,8 @@ const WalletRow = ({ ens, groupOff, isTestnet, loading, notificationSettings, wa
 const NotificationsSection = () => {
   const { justBecameActive } = useAppState();
   const { navigate } = useNavigation();
-  const { network } = useAccountSettings();
-  const isTestnet = isTestnetNetwork(network);
+  const { chainId } = useAccountSettings();
+  const isTestnet = isTestnetChain({ chainId });
   const { wallets, walletNames } = useWallets();
   const { isConnected } = useNetInfo();
   const { points_enabled, points_notifications_toggle } = useRemoteConfig();
@@ -221,44 +220,34 @@ const NotificationsSection = () => {
   const neverGranted = permissionStatus === RESULTS.DENIED;
   const disabledInSystem = permissionStatus === RESULTS.BLOCKED;
 
-  const toggleAllOwnedNotifications = useCallback(() => {
+  const toggleAllOwnedNotifications = useCallback(async () => {
     if (!isConnected) {
       showOfflineAlert();
       return;
     }
     setOwnedState(prev => ({ status: !prev.status, loading: true }));
-    updateGroupSettingsAndSubscriptions(WalletNotificationRelationship.OWNER, !storedOwnerEnabled)
-      .then(() => {
-        setOwnedState(prev => ({ ...prev, loading: false }));
-        updateSettingsForWalletsWithRelationshipType(WalletNotificationRelationship.OWNER, {
-          successfullyFinishedInitialSubscription: true,
-          enabled: !storedOwnerEnabled,
-        });
-      })
-      .catch(() => {
-        showNotificationSubscriptionErrorAlert();
-        setOwnedState(prev => ({ status: !prev.status, loading: false }));
-      });
+    const isSuccess = await updateGroupSettingsAndSubscriptions(WalletNotificationRelationship.OWNER, !storedOwnerEnabled);
+    if (isSuccess) {
+      setOwnedState(prev => ({ ...prev, loading: false }));
+    } else {
+      showNotificationSubscriptionErrorAlert();
+      setOwnedState(prev => ({ status: !prev.status, loading: false }));
+    }
   }, [storedOwnerEnabled, updateGroupSettingsAndSubscriptions, isConnected]);
 
-  const toggleAllWatchedNotifications = useCallback(() => {
+  const toggleAllWatchedNotifications = useCallback(async () => {
     if (!isConnected) {
       showOfflineAlert();
       return;
     }
     setWatchedState(prev => ({ status: !prev.status, loading: true }));
-    updateGroupSettingsAndSubscriptions(WalletNotificationRelationship.WATCHER, !storedWatcherEnabled)
-      .then(() => {
-        setWatchedState(prev => ({ ...prev, loading: false }));
-        updateSettingsForWalletsWithRelationshipType(WalletNotificationRelationship.WATCHER, {
-          successfullyFinishedInitialSubscription: true,
-          enabled: !storedWatcherEnabled,
-        });
-      })
-      .catch(() => {
-        showNotificationSubscriptionErrorAlert();
-        setWatchedState(prev => ({ status: !prev.status, loading: false }));
-      });
+    const isSuccess = await updateGroupSettingsAndSubscriptions(WalletNotificationRelationship.WATCHER, !storedWatcherEnabled);
+    if (isSuccess) {
+      setWatchedState(prev => ({ ...prev, loading: false }));
+    } else {
+      showNotificationSubscriptionErrorAlert();
+      setWatchedState(prev => ({ status: !prev.status, loading: false }));
+    }
   }, [updateGroupSettingsAndSubscriptions, storedWatcherEnabled, isConnected]);
 
   const toggleTopic = useCallback(
@@ -291,13 +280,13 @@ const NotificationsSection = () => {
   const openNetworkSettings = useCallback(() => navigate(Routes.NETWORK_SWITCHER), [navigate]);
 
   const requestNotificationPermissions = useCallback(async () => {
-    requestPermission().then(allowed => {
-      if (allowed) {
-        setPermissionStatus(RESULTS.GRANTED);
-      } else {
-        openSystemSettings();
-      }
-    });
+    const status = await requestNotificationPermission();
+    const allowed = isNotificationPermissionGranted(status);
+    if (allowed) {
+      setPermissionStatus(RESULTS.GRANTED);
+    } else {
+      openSystemSettings();
+    }
   }, [openSystemSettings]);
 
   const checkPermissions = useCallback(async () => {

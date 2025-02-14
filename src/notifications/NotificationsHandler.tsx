@@ -1,5 +1,5 @@
 import { PropsWithChildren, useCallback, useEffect, useRef } from 'react';
-import { usePrevious, useWallets } from '@/hooks';
+import { usePrevious, useSwitchWallet, useWallets } from '@/hooks';
 import { setupAndroidChannels } from '@/notifications/setupAndroidChannels';
 import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import {
@@ -11,9 +11,7 @@ import {
 } from '@/notifications/types';
 import { handleShowingForegroundNotification } from '@/notifications/foregroundHandler';
 import { registerTokenRefreshListener, saveFCMToken } from '@/notifications/tokens';
-import { WALLETCONNECT_SYNC_DELAY } from '@/notifications/constants';
 import { useDispatch } from 'react-redux';
-import { requestsForTopic } from '@/redux/requests';
 import { ThunkDispatch } from 'redux-thunk';
 import store, { AppState } from '@/redux/store';
 import { AnyAction } from 'redux';
@@ -22,7 +20,7 @@ import { Navigation } from '@/navigation';
 import Routes from '@rainbow-me/routes';
 import { AppState as ApplicationState, AppStateStatus, NativeEventSubscription } from 'react-native';
 import notifee, { Event as NotifeeEvent, EventType } from '@notifee/react-native';
-import { ethereumUtils, isLowerCaseMatch } from '@/utils';
+import { isLowerCaseMatch } from '@/utils';
 import walletTypes from '@/helpers/walletTypes';
 import {
   NotificationSubscriptionChangesListener,
@@ -32,10 +30,7 @@ import {
   trackWalletsSubscribedForNotifications,
 } from '@/notifications/analytics';
 import { AddressWithRelationship, WalletNotificationRelationship } from '@/notifications/settings';
-import {
-  initializeGlobalNotificationSettings,
-  initializeNotificationSettingsForAllAddressesAndCleanupSettingsForRemovedWallets,
-} from '@/notifications/settings/initialization';
+import { initializeNotificationSettingsForAllAddresses } from '@/notifications/settings/initialization';
 import { logger } from '@/logger';
 import { transactionFetchQuery } from '@/resources/transactions/transaction';
 
@@ -44,9 +39,10 @@ type Callback = () => void;
 type Props = PropsWithChildren<{ walletReady: boolean }>;
 
 export const NotificationsHandler = ({ walletReady }: Props) => {
-  const wallets = useWallets();
+  const { wallets } = useWallets();
+  const walletSwitcher = useSwitchWallet();
   const dispatch: ThunkDispatch<AppState, unknown, AnyAction> = useDispatch();
-  const walletsRef = useRef(wallets);
+  const walletSwitcherRef = useRef(walletSwitcher);
   const prevWalletReady = usePrevious(walletReady);
   const subscriptionChangesListener = useRef<NotificationSubscriptionChangesListener>();
   const onTokenRefreshListener = useRef<Callback>();
@@ -61,34 +57,13 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
   We need to save wallets property to a ref in order to have an up-to-date value
   inside the event listener callbacks closure
    */
-  walletsRef.current = wallets;
+  walletSwitcherRef.current = walletSwitcher;
 
   const onForegroundRemoteNotification = (remoteMessage: FirebaseMessagingTypes.RemoteMessage) => {
     const type = remoteMessage?.data?.type;
-    if (type === NotificationTypes.walletConnect) {
-      handleWalletConnectNotification(remoteMessage);
-    } else if (remoteMessage?.notification !== undefined) {
+    if (type !== NotificationTypes.walletConnect && remoteMessage?.notification !== undefined) {
       handleShowingForegroundNotification(remoteMessage as FixedRemoteMessage);
     }
-  };
-
-  const onBackgroundRemoteNotification = async (remoteMessage: FirebaseMessagingTypes.RemoteMessage) => {
-    const type = remoteMessage?.data?.type;
-    if (type === NotificationTypes.walletConnect) {
-      handleWalletConnectNotification(remoteMessage);
-    }
-  };
-
-  const handleWalletConnectNotification = (remoteMessage: FirebaseMessagingTypes.RemoteMessage) => {
-    const topic = remoteMessage?.data?.topic;
-
-    setTimeout(() => {
-      const requests = dispatch(requestsForTopic(topic as string));
-      if (requests) {
-        // WC requests will open automatically
-        return false;
-      }
-    }, WALLETCONNECT_SYNC_DELAY);
   };
 
   const handleDeferredNotificationIfNeeded = useCallback(async () => {
@@ -114,7 +89,15 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
 
   const handleNotificationPressed = (event: NotifeeEvent) => {
     if (event.type === EventType.PRESS) {
-      handleOpenedNotification(event.detail.notification);
+      const notification = event.detail.notification;
+      if (notification) {
+        const minimalNotification: MinimalNotification = {
+          title: notification.title,
+          body: notification.body,
+          data: notification.data as { [key: string]: string | object },
+        };
+        handleOpenedNotification(minimalNotification);
+      }
     }
   };
 
@@ -144,22 +127,23 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
       // casting data payload to type that was agreed on with backend
       const data = notification.data as unknown as TransactionNotificationData;
 
-      const wallets = walletsRef.current;
+      const walletSwitcher = walletSwitcherRef.current;
       const { accountAddress, nativeCurrency } = store.getState().settings;
 
       let walletAddress: string | null | undefined = accountAddress;
       if (!isLowerCaseMatch(accountAddress, data.address)) {
-        walletAddress = await wallets.switchToWalletWithAddress(data.address);
+        walletAddress = await walletSwitcher.switchToWalletWithAddress(data.address);
       }
       if (!walletAddress) {
         return;
       }
       Navigation.handleAction(Routes.PROFILE_SCREEN, {});
 
-      const network = ethereumUtils.getNetworkFromChainId(parseInt(data.chain, 10));
+      const chainId = parseInt(data.chain, 10);
+
       const transaction = await transactionFetchQuery({
         hash: data.hash,
-        network: network,
+        chainId,
         address: walletAddress,
         currency: nativeCurrency,
       });
@@ -172,9 +156,9 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
         transaction,
       });
     } else if (type === NotificationTypes.walletConnect) {
-      logger.info(`NotificationsHandler: handling wallet connect notification`, { notification });
+      logger.debug(`[NotificationsHandler]: handling wallet connect notification`, { notification });
     } else if (type === NotificationTypes.marketing) {
-      logger.info(`NotificationsHandler: handling marketing notification`, {
+      logger.debug(`[NotificationsHandler]: handling marketing notification`, {
         notification,
       });
       const data = notification.data as unknown as MarketingNotificationData;
@@ -185,7 +169,7 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
         });
       }
     } else {
-      logger.warn(`NotificationsHandler: received unknown notification`, {
+      logger.warn(`[NotificationsHandler]: received unknown notification`, {
         notification,
       });
     }
@@ -198,7 +182,6 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
     subscriptionChangesListener.current = registerNotificationSubscriptionChangesListener();
     onTokenRefreshListener.current = registerTokenRefreshListener();
     foregroundNotificationListener.current = messaging().onMessage(onForegroundRemoteNotification);
-    messaging().setBackgroundMessageHandler(onBackgroundRemoteNotification);
     messaging().getInitialNotification().then(handleAppOpenedWithNotification);
     notificationOpenedListener.current = messaging().onNotificationOpenedApp(handleAppOpenedWithNotification);
     appStateListener.current = ApplicationState.addEventListener('change', nextAppState => {
@@ -234,7 +217,7 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
     if (walletReady && !alreadyRanInitialization.current) {
       const addresses: AddressWithRelationship[] = [];
 
-      Object.values(wallets.wallets ?? {}).forEach(wallet =>
+      Object.values(wallets ?? {}).forEach(wallet =>
         wallet?.addresses.forEach(
           ({ address, visible }: { address: string; visible: boolean }) =>
             visible &&
@@ -245,8 +228,7 @@ export const NotificationsHandler = ({ walletReady }: Props) => {
             })
         )
       );
-      initializeGlobalNotificationSettings();
-      initializeNotificationSettingsForAllAddressesAndCleanupSettingsForRemovedWallets(addresses);
+      initializeNotificationSettingsForAllAddresses(addresses);
 
       alreadyRanInitialization.current = true;
     }

@@ -1,16 +1,27 @@
+import {
+  NewTransaction,
+  ParsedAddressAsset,
+  TransactionDirection,
+  TransactionGasParamAmounts,
+  TransactionStatus,
+  TxHash,
+} from '@/entities';
+import { getProvider } from '@/handlers/web3';
+import { add, addBuffer, greaterThan, lessThan, multiply, subtract } from '@/helpers/utilities';
+import { RainbowError } from '@/logger';
+import store from '@/redux/store';
+import { REFERRER_CLAIM } from '@/references';
+import { addNewTransaction } from '@/state/pendingTransactions';
+import ethereumUtils from '@/utils/ethereumUtils';
 import { AddressZero } from '@ethersproject/constants';
-import { CrosschainQuote, QuoteError, SwapType, getClaimBridgeQuote } from '@rainbow-me/swaps';
+import { CrosschainQuote, QuoteError, getClaimBridgeQuote } from '@rainbow-me/swaps';
 import { Address } from 'viem';
 import { ActionProps } from '../references';
 import { executeCrosschainSwap } from './crosschainSwap';
-import { RainbowError } from '@/logger';
-import { add, addBuffer, greaterThan, lessThan, multiply, subtract } from '@/helpers/utilities';
-import { getProviderForNetwork } from '@/handlers/web3';
-import { Network } from '@/helpers';
-import { TxHash } from '@/resources/transactions/types';
-import { NewTransaction, TransactionGasParamAmounts } from '@/entities';
-import { addNewTransaction } from '@/state/pendingTransactions';
-import ethereumUtils, { getNetworkFromChainId } from '@/utils/ethereumUtils';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { getDefaultSlippageWorklet } from '@/__swaps__/utils/swaps';
+import { getRemoteConfig } from '@/model/remoteConfig';
 
 // This action is used to bridge the claimed funds to another chain
 export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps<'claimBridge'>) {
@@ -24,6 +35,8 @@ export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps
   let maxBridgeableAmount = sellAmount;
   let needsNewQuote = false;
 
+  const currency = store.getState().settings.nativeCurrency;
+
   // 1 - Get a quote to bridge the claimed funds
   const claimBridgeQuote = await getClaimBridgeQuote({
     chainId,
@@ -32,13 +45,13 @@ export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps
     sellTokenAddress: AddressZero,
     buyTokenAddress: AddressZero,
     sellAmount: sellAmount,
-    slippage: 2,
-    swapType: SwapType.crossChain,
+    slippage: +getDefaultSlippageWorklet(chainId, getRemoteConfig()),
+    currency,
   });
 
   // if we don't get a quote or there's an error we can't continue
   if (!claimBridgeQuote || (claimBridgeQuote as QuoteError)?.error) {
-    throw new Error('[CLAIM-BRIDGE]: error getting getClaimBridgeQuote');
+    throw new Error(`[CLAIM-BRIDGE]: error getting getClaimBridgeQuote: ${claimBridgeQuote}`);
   }
 
   let bridgeQuote = claimBridgeQuote as CrosschainQuote;
@@ -46,14 +59,13 @@ export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps
   // 2 - We use the default gas limit (already inflated) from the quote to calculate the aproximate gas fee
   const initalGasLimit = bridgeQuote.defaultGasLimit as string;
 
-  const provider = getProviderForNetwork(Network.optimism);
+  const provider = getProvider({ chainId: ChainId.optimism });
 
   const l1GasFeeOptimism = await ethereumUtils.calculateL1FeeOptimism(
-    // @ts-ignore
     {
       data: bridgeQuote.data,
       from: bridgeQuote.from,
-      to: bridgeQuote.to ?? null,
+      to: bridgeQuote.to,
       value: bridgeQuote.value,
     },
     provider
@@ -92,12 +104,12 @@ export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps
       sellTokenAddress: AddressZero,
       buyTokenAddress: AddressZero,
       sellAmount: maxBridgeableAmount,
-      slippage: 2,
-      swapType: SwapType.crossChain,
+      slippage: +getDefaultSlippageWorklet(chainId, getRemoteConfig()),
+      currency,
     });
 
     if (!newQuote || (newQuote as QuoteError)?.error) {
-      throw new Error('[CLAIM-BRIDGE]: error getClaimBridgeQuote (new)');
+      throw new Error(`[CLAIM-BRIDGE]: error getClaimBridgeQuote (new): ${newQuote}`);
     }
 
     bridgeQuote = newQuote as CrosschainQuote;
@@ -133,63 +145,70 @@ export async function claimBridge({ parameters, wallet, baseNonce }: ActionProps
     quote: bridgeQuote,
     wallet,
     gasParams,
+    referrer: REFERRER_CLAIM,
   };
 
   let swap;
   try {
     swap = await executeCrosschainSwap(swapParams);
   } catch (e) {
-    throw new Error('[CLAIM-BRIDGE]: crosschainSwap error');
+    throw new Error(`[CLAIM-BRIDGE]: crosschainSwap error: ${e}`);
   }
 
   if (!swap) {
     throw new Error('[CLAIM-BRIDGE]: executeCrosschainSwap returned undefined');
   }
 
-  const typedAssetToBuy = {
+  const chainsName = useBackendNetworksStore.getState().getChainsName();
+
+  const typedAssetToBuy: ParsedAddressAsset = {
     ...parameters.assetToBuy,
-    network: getNetworkFromChainId(parameters.assetToBuy.chainId),
+    network: chainsName[parameters.assetToBuy.chainId],
+    chainId: parameters.assetToBuy.chainId,
     colors: undefined,
     networks: undefined,
+    native: undefined,
   };
   const typedAssetToSell = {
     ...parameters.assetToSell,
-    network: getNetworkFromChainId(parameters.assetToSell.chainId),
+    network: chainsName[parameters.assetToSell.chainId],
+    chainId: parameters.assetToSell.chainId,
     colors: undefined,
     networks: undefined,
+    native: undefined,
   };
 
   // 5 - if the swap was successful we add the transaction to the store
   const transaction = {
+    chainId,
     data: bridgeQuote.data,
     value: bridgeQuote.value?.toString(),
     asset: typedAssetToBuy,
     changes: [
       {
-        direction: 'out',
+        direction: TransactionDirection.OUT,
         asset: typedAssetToSell,
         value: bridgeQuote.sellAmount.toString(),
       },
       {
-        direction: 'in',
+        direction: TransactionDirection.IN,
         asset: typedAssetToBuy,
         value: bridgeQuote.buyAmount.toString(),
       },
     ],
-    from: bridgeQuote.from as Address,
+    from: bridgeQuote.from,
     to: bridgeQuote.to as Address,
     hash: swap.hash as TxHash,
-    network: getNetworkFromChainId(parameters.chainId),
+    network: chainsName[parameters.chainId],
     nonce: swap.nonce,
-    status: 'pending',
+    status: TransactionStatus.pending,
     type: 'bridge',
-    flashbots: false,
     ...gasParams,
   } satisfies NewTransaction;
 
   addNewTransaction({
-    address: bridgeQuote.from as Address,
-    network: getNetworkFromChainId(parameters.chainId),
+    address: bridgeQuote.from,
+    chainId: parameters.chainId,
     transaction,
   });
 

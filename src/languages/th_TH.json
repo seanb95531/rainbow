@@ -16,6 +16,7 @@
       "tab_balances": "ยอดคงเหลือ",
       "tab_balances_empty_state": "ยอดคงเหลือ",
       "tab_balances_tooltip": "Ethereum และยอดคงเหลือ Token",
+      "tab_claimables": "รายการที่ต้องเคลม",
       "tab_collectibles": "สะสม",
       "tab_interactions": "การต่อสู้",
       "tab_interactions_tooltip": "การโต้ตอบของสัญญาอัจฉริยะ",
@@ -24,6 +25,7 @@
       "tab_showcase": "โชว์เคส",
       "tab_points": "แต้ม",
       "tab_positions": "ตำแหน่ง",
+      "tab_rewards": "รางวัล",
       "tab_transactions": "การทำธุรกรรม",
       "tab_transactions_tooltip": "การทำธุรกรรมและการโอนโทเค็น",
       "tab_uniquetokens": "โทเค็นที่ไม่ซ้ำกัน",
@@ -431,6 +433,39 @@
         "description": "คุณยังสามารถกดค้างที่อยู่\nข้างต้นเพื่อคัดลอก"
       }
     },
+    "check_identifier": {
+      "title": "ต้องการการตรวจสอบตัวตน",
+      "description": "ดูเหมือนว่าคุณอาจเปลี่ยนอุปกรณ์หรือทำการติดตั้ง Rainbow ใหม่ กรุณาตรวจสอบตัวตนเพื่อให้เราสามารถตรวจสอบข้อมูลใน keychain ของคุณยังคงอยู่ในสถานะที่ดี",
+      "action": "ตรวจสอบตัวตน",
+      "dismiss": "ยกเลิก",
+      "error_alert": {
+        "title": "ข้อผิดพลาดในการตรวจสอบ keychain",
+        "message": "เราพบข้อผิดพลาดขณะตรวจสอบข้อมูล keychain ของคุณ กรุณาลองอีกครั้ง หากปัญหายังมีอยู่ กรุณาติดต่อฝ่ายสนับสนุน",
+        "contact_support": "ติดต่อฝ่ายสนับสนุน",
+        "cancel": "ยกเลิก"
+      },
+      "failure_alert": {
+        "title": "ข้อมูล keychain ไม่ถูกต้อง",
+        "message": "เราไม่สามารถตรวจสอบความสมบูรณ์ของข้อมูล keychain ของคุณ กรุณากู้คืนวอลเล็ตของคุณและลองใหม่อีกครั้ง หากปัญหายังคงมีอยู่ กรุณาติดต่อฝ่ายสนับสนุน",
+        "action": "ดำเนินการต่อ"
+      }
+    },
+    "claimables": {
+      "panel": {
+        "calculating_gas_fee": "กำลังคำนวณค่าแก๊ส...",
+        "amount_to_claim_on_network": "%{amount} ที่ต้องเคลมบน %{network}",
+        "claim": "เคลม",
+        "claiming": "กำลังเรียกร้อง",
+        "claim_in_progress": "กำลังเคลม...",
+        "claimed": "เคลมแล้ว!",
+        "claiming_failed": "การเรียกร้องล้มเหลว",
+        "insufficient_funds": "เงินทุนไม่เพียงพอ",
+        "claim_amount": "เคลม %{amount}",
+        "done": "เสร็จสิ้น",
+        "try_again": "ลองใหม่",
+        "tokens_on_the_way": "โทเคนกำลังมาถึง!"
+      }
+    },
     "cloud": {
       "backup_success": "กระเป๋าเงินของคุณได้รับการสำรองข้อมูลเรียบร้อยแล้ว!"
     },
@@ -468,7 +503,8 @@
       "clear_image_metadata_cache": "ล้างแคชข้อมูลภาพ",
       "clear_local_storage": "ล้าง local storage",
       "clear_mmkv_storage": "ล้าง MMKV storage",
-      "connect_to_hardhat": "เชื่อมต่อกับ hardhat",
+      "connect_to_anvil": "เชื่อมต่อกับ anvil",
+      "disconnect_to_anvil": "ตัดการเชื่อมต่อจาก Anvil",
       "crash_app_render_error": "คว่ำ app (render error)",
       "enable_testnets": "เปิดใช้งาน Testnets",
       "installing_update": "กำลังติดตั้งการอัปเดต",
@@ -541,7 +577,8 @@
         "from_divider": "จาก",
         "to_divider": "ไปยัง",
         "view_on": "ดูบน %{blockExplorerName}",
-        "view_on_etherscan": "ดูบน Etherscan"
+        "view_on_etherscan": "ดูบน Etherscan",
+        "copy_contract_address": "คัดลอกที่อยู่สัญญา"
       },
       "all_networks": "ทุกเครือข่าย",
       "filter_by_network": "กรองตามเครือข่าย",
@@ -577,7 +614,8 @@
       "price_impact": {
         "long_wait": {
           "title": "รอนาน",
-          "description": "ประมาณ %{time}"
+          "description": "ประมาณ %{time}",
+          "description_prefix": "ประมาณ"
         },
         "unknown_price": {
           "title": "ไม่ทราบมูลค่าตลาด",
@@ -587,6 +625,7 @@
         "small_market": "ตลาดเล็ก",
         "small_market_try_smaller_amount": "ตลาดเล็ก - ลองปริมาณที่น้อยกว่า",
         "you_are_losing": "คุณสูญเสีย %{priceImpact}",
+        "you_are_losing_prefix": "คุณกำลังสูญเสีย",
         "no_data": "ไม่ทราบมูลค่าตลาด",
         "label": "เสี่ยงที่จะสูญเสีย",
         "no_data_subtitle": "หากคุณตัดสินใจดำเนินการต่อ โปรดแน่ใจว่าคุณพอใจกับจำนวนที่ได้รับการเสนอราคา"
@@ -687,6 +726,7 @@
         "flashbots_protect": "Flashbots ป้องกัน",
         "losing": "ขาดทุน",
         "on": "เปิด",
+        "off": "ปิด",
         "price_impact": "ผลกระทบของราคา",
         "price_row_per_token": "ต่อ",
         "slippage_message": "นี้เป็นตลาดขนาดเล็ก, ดังนั้นคุณกำลังได้รับราคาที่ไม่ดี ลองเทรดขนาดเล็กลงดู!",
@@ -723,6 +763,16 @@
         "number_of_steps": "%{number} ขั้นตอน",
         "input_exchange_rate": "1 %{inputSymbol} สำหรับ %{executionRate} %{outputSymbol}",
         "output_exchange_rate": "1 %{outputSymbol} สำหรับ %{executionRate} %{inputSymbol}"
+      },
+      "swap_details_v2": {
+        "automatic": "อัตโนมัติ",
+        "degen_mode": "Degenโหมด",
+        "degen_mode_description": "ข้ามขั้นตอนการตรวจสอบเพื่อการสลับที่เร็วขึ้น",
+        "maximum_sold": "ขายสูงสุด",
+        "minimum_received": "รับต่ำสุด",
+        "preferred_network": "เครือข่ายที่คุณต้องการ",
+        "rainbow_fee": "รวมค่าธรรมเนียม Rainbow",
+        "settings": "ตั้งค่า"
       },
       "token_index": {
         "get_token": "รับ %{assetSymbol}",
@@ -823,6 +873,10 @@
         "title_plural": "สามารถใช้ได้บน %{length} เครือข่าย",
         "title_singular": "สามารถใช้ได้บนเครือข่าย %{network}"
       },
+      "default_network_explainer": {
+        "text": "%{chainName} เป็น Layer 2 ที่ทำงานบน Ethereum ทำให้ธุรกรรมถูกและเร็วขึ้น ยังได้รับประโยชน์จากความปลอดภัยหลักของ Ethereum",
+        "title": "%{chainName} คืออะไร?"
+      },
       "arbitrum": {
         "text": "Arbitrum เป็นเครือข่ายชั้นที่ 2 ที่ทำงานบน Ethereum ทำให้การทำธุรกรรมถูกลงและเร็วขึ้นในขณะที่ยังได้รับประโยชน์จากความปลอดภัยที่รองรับ Ethereum\n\nมันผนึกธุรกรรมหลายๆ รายการเข้าด้วยกันในรูปแบบ \"roll up\" ก่อนจะส่งให้อยู่ถาวรบน Ethereum",
         "title": "Arbitrum คืออะไร?"
@@ -883,15 +937,19 @@
       },
       "avalanche": {
         "text": "Avalanche เป็น sidechain, เครือข่ายที่แตกต่างกันที่ทำงานข้างกับ Ethereum และสามารถเข้ากันได้\n\nช่วยให้การทำธุรกรรมถูกและเร็วขึ้น แต่ไม่เหมือนกับเครือข่าย Layer 2, Avalanche มีระบบความปลอดภัยและการสร้างความเห็นชอบที่ต่างจาก Ethereum",
-        "title": "Avalanche คืออะไร"
+        "title": "Avalanche คืออะไร?"
       },
       "degen": {
-        "text": "Degen Chain เป็นเครือข่าย Layer 3 ที่ทำงานบน Arbitrum และ Ethereum นำเสนอการทำธุรกรรมที่เร็วและถูกต้นทุนอย่างไม่น่าเชื่อ โดยใช้โทเคนชุมชน Farcaster $degen",
+        "text": "Degen Chain เป็นเครือข่าย Layer 3 ที่ทำงานบน Arbitrum และ Ethereum",
         "title": "Degen Chain คืออะไร?"
       },
       "blast": {
         "text": "Blast คือเครือข่าย Layer 2 ที่ทำงานบน Ethereum นำเสนอธุรกรรมที่ราคาถูกและเร็วขึ้นในขณะที่ยังได้รับประโยชน์จากความปลอดภัยหลักของ Ethereum\n\nมันรวมธุรกรรมจำนวนมากเข้าด้วยกันใน \"roll up\" ก่อนที่จะส่งลงไปที่ Ethereum อย่างถาวร",
         "title": "Blast คืออะไร?"
+      },
+      "apechain": {
+        "text": "ApeChain เป็นเครือข่าย Layer 3 ที่ทำงานบน Arbitrum Orbit และ Ethereum\n\nมันเสริมสร้างการใช้ ApeCoin อย่างมีนัยสำคัญ ส่งเสริมเศรษฐกิจที่แข็งแกร่งและมีพลังซึ่งขับเคลื่อนโดย $APE",
+        "title": "ApeChain คืออะไร?"
       },
       "zora": {
         "text": "Zora คือเครือข่าย Layer 2 ที่ทำงานบน Ethereum ทำให้การทำธุรกรรมถูกและเร็วขึ้นในขณะที่ยังได้รับประโยชน์จากความปลอดภัยสำคัญของ Ethereum\n\nมันรวมการทำธุรกรรมหลายๆ รายการใน \"roll up\" ก่อนส่งลงไปอยู่ถาวรบน Ethereum.",
@@ -1030,14 +1088,17 @@
         "urgent": "ด่วน",
         "custom": "กำหนดเอง"
       },
-      "network_fee": "ค่าธรรมเนียมเครือข่ายโดยประมาณ",
+      "unable_to_determine_selected_gas": "ไม่สามารถระบุก๊าซที่เลือกได้",
+      "network_fee": "ค่าธรรมเนียมเครือข่าย (ประเมิน)",
       "current_base_fee": "ค่าฐานปัจจุบัน",
       "max_base_fee": "ค่าฐานสูงสุด",
       "miner_tip": "ค่าเทิปของนักขุด",
+      "gas_price": "ราคาก๊าซ",
       "max_transaction_fee": "ค่าธรรมเนียมการทำธุรกรรมสูงสุด",
       "warning_separator": "·",
       "lower_than_suggested": "ต่ำ · อาจติดขัด",
       "higher_than_suggested": "สูง · จ่ายเกิน",
+      "likely_to_fail": "ต่ำ · มีโอกาสล้มเหลว",
       "max_base_fee_too_low_error": "ต่ำ · มีโอกาสล้มเหลว",
       "tip_too_low_error": "ต่ำ · มีโอกาสล้มเหลว",
       "alert_message_higher_miner_tip_needed": "แนะนำให้ตั้งค่าค่าธรรมเนียมทิปคนขุดที่สูงขึ้นเพื่อหลีกเลี่ยงปัญหา",
@@ -1286,10 +1347,20 @@
     "nfts": {
       "selling": "ขาย",
       "sort": {
+        "ABC": "Abc",
         "abc": "Abc",
+        "MOST_RECENT": "ล่าสุด",
         "most_recent": "ล่าสุด",
-        "floor_price": "ราคาพื้น"
-      }
+        "FLOOR_PRICE": "ราคาพื้น",
+        "floor_price": "ราคาพื้น",
+        "order": {
+          "asc": "ลำดับจากน้อยไปมาก",
+          "desc": "ลำดับจากมากไปน้อย"
+        }
+      },
+      "empty": "สะสม",
+      "collect_now": "เก็บสะสมทันที",
+      "will_appear_here": "ของสะสมจะปรากฏที่นี่"
     },
     "nft_offers": {
       "card": {
@@ -1357,13 +1428,16 @@
       },
       "claim": {
         "title": "เรียกร้องคะแนนของคุณ",
+        "title_rewards_line_1": "ยินดีต้อนรับสู่",
+        "title_rewards_line_2": "Rainbow Rewards",
         "subtitle": "คะแนนของคุณมาแล้ว หากดูว่าคุณได้รับกี่คะแนน",
+        "subtitle_rewards": "รับรางวัลจากการใช้ Rainbow ทำสิ่งต่างๆ บนเชน รับคะแนน และรับ ETH",
         "get_started": "เริ่มทำงาน",
         "use_referral_code": "ใช้รหัสอ้างอิง"
       },
       "referral": {
         "title": "กรอกรหัสอ้างอิงของคุณ",
-        "subtitle": "กรอกรหัสอ้างอิงด้านล่างเพื่อเรียกร้องรางวัลโบนัสของคุณ",
+        "subtitle": "ป้อนรหัสอ้างอิงด้านล่างเพื่อรับโบนัสคะแนนของคุณ",
         "back": "ย้อนกลับ",
         "error": "เกิดข้อผิดพลาดบางอย่าง กรุณาเริ่มต้นแอปใหม่และลองใหม่อีกครั้ง",
         "get_started": "เริ่มทำงาน",
@@ -1378,6 +1452,7 @@
         "share_link": "แชร์ลิงค์",
         "next_drop": "รางวัลถัดไป",
         "your_rank": "อันดับของคุณ",
+        "no_change": "ไม่มีการเปลี่ยนแปลง",
         "of_x": "จาก %{totalUsers}",
         "referrals": "การอ้างอิง",
         "streak": "แนวโน้ม",
@@ -1395,12 +1470,40 @@
         "today": "วันนี้",
         "error": "อุ๊ปส์!\nกรุณาดึงเพื่อรีเฟรช.",
         "points": "คะแนน",
+        "points_capitalized": "แต้ม",
         "referral_code_copied": "คัดลอกโค้ดการอ้างอิงเรียบร้อย",
         "earn_points_for_referring": "รับคะแนนเมื่อผู้ที่คุณอ้างอิงแลกเปลี่ยนเงินผ่าน Rainbow มูลค่า $100 และรับ 10% ของคะแนนที่ผู้ที่คุณอ้างอิงได้รับ",
         "already_claimed_points": "ขออภัย! คุณได้รับคะแนนนี้แล้ว.",
         "now": "ตอนนี้",
         "unranked": "ไม่มีอันดับ",
-        "points_to_rank": "ต้องการคะแนนอีก 750 คะแนนเพื่อจัดอันดับ"
+        "points_to_rank": "ต้องการคะแนนอีก 750 คะแนนเพื่อจัดอันดับ",
+        "ranking": "อันดับที่ %{rank}",
+        "available_to_claim": "พร้อมสำหรับการรับ",
+        "claim": "รับ %{value}",
+        "choose_claim_network": "เลือกเครือข่ายการรับ",
+        "claim_on_network": "รับบน %{network}",
+        "claimed_on_network": "รับแล้วบน %{network}",
+        "claiming_on_network": "กำลังรับบน %{network}",
+        "error_claiming": "การเรียกร้องล้มเหลว",
+        "free_to_claim": "ฟรีสำหรับการรับ",
+        "has_bridge_fee": "มีค่าธรรมเนียมการโอน",
+        "claim_rewards": "รับรางวัล",
+        "earned_last_week": "ได้รับเมื่อสัปดาห์ที่แล้ว",
+        "top_10_earner": "ผู้ทำรายได้สูงสุด 10 อันดับแรก",
+        "zero_points": "0 คะแนน",
+        "no_weekly_rank": "ไม่มีอันดับประจําสัปดาห์",
+        "none": "ไม่มี",
+        "my_earnings": "รายได้ของฉัน",
+        "claimed_earnings": "รายได้ที่รับแล้ว",
+        "current_value": "มูลค่าปัจจุบัน",
+        "rainbow_users_have_earned": "ผู้ใช้ Rainbow ได้รับ",
+        "earn_eth_rewards": "รับรางวัล ETH",
+        "rewards_explainer": "ทุกสัปดาห์ ผู้ที่ได้รับคะแนนประจำสัปดาห์สูงสุดจะได้รับส่วนแบ่งจากรายได้ของ Rainbow บนเชน สะสมคะแนนโดยการแลกเปลี่ยนหรือทำธุรกรรมใน Rainbow ใช้ dapps หรือแนะนำเพื่อน",
+        "my_points": "คะแนนของฉัน",
+        "refer_friends": "แนะนำเพื่อน",
+        "try_again": "ลองใหม่",
+        "bridge_error": "สำเร็จบางส่วน",
+        "bridge_error_explainer": "ของรางวัลของคุณถูกเรียกไปเรียบร้อยบน Optimism อย่างไรก็ตาม การโอนไปยัง %{network} ล้มเหลว หากคุณต้องการ คุณสามารถบริดจ์ของรางวัลด้วยตนเองโดยใช้ฟีเจอร์แลกเปลี่ยน"
       },
       "console": {
         "claim_bonus_paragraph": "คุณจะได้รับแต้มเพิ่มอีก 100 แต้ม เมื่อคุณทำการแลกเปลี่ยนเงินอย่างน้อย $100 ผ่าน Rainbow",
@@ -1774,10 +1877,17 @@
       }
     },
     "positions": {
+      "lp_range_status": {
+        "full_range": "ช่วงเต็ม",
+        "out_of_range": "นอกช่วง",
+        "in_range": "ในช่วง"
+      },
       "open_dapp": "เปิด 􀮶",
       "deposits": "การฝาก",
       "borrows": "การยืม",
-      "rewards": "รางวัล"
+      "stakes": "วางเดิมทุนแล้ว",
+      "rewards": "รางวัล",
+      "pools": "สระน้ำ"
     },
     "savings": {
       "deposit": "ฝาก",
@@ -1916,9 +2026,33 @@
       "too_many_signup_request": "คำขอสมัครเยอะเกินไป, โปรดลองอีกครั้งในภายหลัง"
     },
     "swap": {
+      "actions": {
+        "hold_to_swap": "กดแลกเปลี่ยน",
+        "hold_to_bridge": "กดที่สะพาน",
+        "save": "บันทึก",
+        "enter_amount": "ป้อนจำนวน",
+        "review": "รีวิว",
+        "fetching_prices": "กำลังดึงข้อมูล",
+        "swapping": "กำลังแลกเปลี่ยน",
+        "select_token": "เลือกโทเคน",
+        "insufficient_funds": "เงินทุนไม่เพียงพอ",
+        "insufficient": "ไม่เพียงพอ",
+        "quote_error": "ข้อผิดพลาดของราคาที่เสนอ"
+      },
       "aggregators": {
         "rainbow": "Rainbow"
       },
+      "bridging": "กำลังสร้างสะพาน",
+      "swapping": "กำลังแลกเปลี่ยน",
+      "max": "สูงสุด",
+      "select": "เลือก",
+      "token_to_get": "โทเคนที่จะได้รับ",
+      "token_to_swap": "โทเคนที่จะแลกเปลี่ยน",
+      "no_balance": "ไม่มีคงเหลือ",
+      "find_a_token_to_buy": "ค้นหาโทเคนที่จะซื้อ",
+      "search_your_tokens": "ค้นหาโทเค็นของคุณ",
+      "error_executing_swap": "ข้อผิดพลาดในการดำเนินการแลกเปลี่ยน",
+      "flashbots_protection": "การป้องกัน Flashbots",
       "tokens_input": {
         "tokens": "โทเคน",
         "sort": "เรียงลำดับ",
@@ -1945,6 +2079,7 @@
       },
       "loading": "กำลังโหลด...",
       "modal_types": {
+        "bridge": "สะพาน",
         "confirm": "ยืนยัน",
         "deposit": "ฝาก",
         "receive": "รับ",
@@ -1976,6 +2111,8 @@
     },
     "token_search": {
       "section_header": {
+        "recent": "ล่าสุด",
+        "popular": "เป็นที่นิยมใน Rainbow",
         "favorites": "รายการโปรด",
         "bridge": "สะพาน",
         "verified": "ได้รับการตรวจสอบ",
@@ -2018,9 +2155,9 @@
           "failed": "การส่งล้มเหลว"
         },
         "receive": {
-          "pending": "",
+          "pending": "กำลังรับ",
           "confirmed": "ได้รับ",
-          "failed": ""
+          "failed": "รับล้มเหลว"
         },
         "withdraw": {
           "pending": "กำลังถอน",
@@ -2404,7 +2541,7 @@
       "balance_title": "ยอดคงเหลือ",
       "buy": "ซื้อ",
       "change_wallet": {
-        "no_balance": "ไม่มีคงเหลือ",
+        "loading_balance": "กำลังโหลดยอดคงเหลือ...",
         "balance_eth": "%{balanceEth} ETH",
         "watching": "กำลังรับชม",
         "ledger": "เลเจอร์"
@@ -2652,6 +2789,8 @@
       }
     },
     "walletconnect": {
+      "connecting": "กำลังเชื่อมต่อ",
+      "loading": "กำลังโหลด",
       "requests": "คำร้องขอ",
       "wants_to_connect": "ต้องการเชื่อมต่อกับกระเป๋าสตางค์ของคุณ",
       "wants_to_connect_to_network": "ต้องการเชื่อมต่อกับเครือข่าย %{network}",
@@ -2745,6 +2884,7 @@
             "unavailable_personal_sign": "ยังไม่สนับสนุนการจำลองสำหรับการเซ็นส่วนตัว",
             "unavailable_zora_network": "การจำลองที่ Zora ยังไม่รองรับ",
             "failed_to_simulate": "การจำลองล้มเหลว ซึ่งแสดงให้เห็นว่าธุรกรรมของคุณมีความเป็นไปได้ที่จะล้มเหลว นี่อาจเป็นปัญหาเกี่ยวกับแอปที่คุณใช้",
+            "tx_api_error": "เราไม่สามารถระบุได้ว่าธุรกรรมของคุณจะสำเร็จหรือล้มเหลว โปรดระมัดระวังในการดำเนินการ",
             "warning": "ไม่พบพฤติกรรมที่เป็นอันตรายที่เป็นที่รู้จัก แต่ธุรกรรมนี้มีลักษณะที่อาจเป็นความเสี่ยงต่อกระเป๋าเงินของท่าน",
             "malicious": "การเซ็นชื่อในธุรกรรมนี้อาจทำให้ท่านสูญเสียการเข้าถึงสิ่งที่อยู่ในกระเป๋าเงินของท่านทั้งหมด"
           },
@@ -2849,6 +2989,8 @@
         "forward": "ส่งต่อ",
         "back": "ย้อนกลับ"
       }
-    }
+    },
+    "copy": "คัดลอก",
+    "paste": "วาง"
   }
 }

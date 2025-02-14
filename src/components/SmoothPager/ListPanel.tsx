@@ -38,7 +38,7 @@ export const TapToDismiss = memo(function TapToDismiss() {
 });
 
 const PANEL_INSET = 8;
-const PANEL_WIDTH = DEVICE_WIDTH - PANEL_INSET * 2;
+export const PANEL_WIDTH = DEVICE_WIDTH - PANEL_INSET * 2;
 const PANEL_BORDER_RADIUS = 42;
 const LIST_SCROLL_INDICATOR_BOTTOM_INSET = { bottom: PANEL_BORDER_RADIUS };
 
@@ -210,7 +210,7 @@ export const ControlPanelMenuItem = memo(function ControlPanelMenuItem({
     const selected = !disableSelectedStyle && selectedItemId?.value === uniqueId;
     return {
       // eslint-disable-next-line no-nested-ternary
-      backgroundColor: selected ? (isDarkMode ? globalColors.white10 : '#FBFCFD') : 'transparent',
+      backgroundColor: selected ? (isDarkMode ? globalColors.white10 : '#F7F7F9') : 'transparent',
       borderColor: selected ? borderColor : 'transparent',
       borderWidth: !selected || IS_ANDROID ? 0 : THICK_BORDER_WIDTH,
       paddingLeft: !selected || IS_ANDROID ? 10 : 10 - THICK_BORDER_WIDTH,
@@ -419,7 +419,7 @@ export const controlPanelStyles = StyleSheet.create({
     backgroundColor: globalColors.white10,
   },
   menuItemSelectedLight: {
-    backgroundColor: '#FBFCFD',
+    backgroundColor: '#F7F7F9',
   },
   panelContainer: {
     bottom: 91,

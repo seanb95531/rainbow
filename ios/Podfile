@@ -1,6 +1,10 @@
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 platform :ios, '15.0'
 source 'https://github.com/CocoaPods/Specs.git'
 #use_modular_headers!
+
+# Disable VisionCamera location API usage
+$VCEnableLocation = false
 
 pod 'Firebase', :modular_headers => true
 pod 'FirebaseCore', :modular_headers => true
@@ -33,6 +37,19 @@ end
 
 target 'Rainbow' do
 
+  use_expo_modules!
+  post_integrate do |installer|
+    begin
+      expo_patch_react_imports!(installer)
+    rescue => e
+      Pod::UI.warn e
+    end
+    begin
+      expo_patch_react_imports!(installer)
+    rescue => e
+      Pod::UI.warn e
+    end
+  end
   # Pods for Rainbow
   config = use_native_modules!
 
@@ -40,6 +57,7 @@ target 'Rainbow' do
   flags = get_default_flags()
 
   use_react_native!(
+    privacy_file_aggregation_enabled: false,
     :path => config[:reactNativePath],
     # to enable hermes on iOS, change `false` to `true` and then install pods
     :hermes_enabled => ENV['USE_HERMES'] != 'NO',
@@ -62,11 +80,10 @@ target 'Rainbow' do
   pod 'Permission-Notifications', :path => "#{permissions_path}/Notifications"
   pod "PanModal", :git => 'https://github.com/rainbow-me/PanModal', :commit => 'ab97d74279ba28c2891b47a5dc767ed4dd7cf994'
   pod 'Shimmer'
-  pod 'RNExitApp', :path => '../node_modules/react-native-exit-app'
   pod 'SRSRadialGradient', :path => '../node_modules/react-native-radial-gradient/ios'
   pod 'react-native-palette-full', :path => '../node_modules/react-native-palette-full'
   pod 'react-native-ble-plx', :path => '../node_modules/react-native-ble-plx'
-  pod 'TOCropViewController', '2.7.3'
+  pod 'TOCropViewController', '~> 2.7.4'
 
   use_native_modules!
 
@@ -76,7 +93,8 @@ target 'Rainbow' do
       config[:reactNativePath],
       # Set `mac_catalyst_enabled` to `true` in order to apply patches
       # necessary for Mac Catalyst builds
-      :mac_catalyst_enabled => false
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
     )
     # This is necessary for Xcode 14, because it signs resource bundles by default when building for devices.
     installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
@@ -87,7 +105,6 @@ target 'Rainbow' do
       end
     end
     installer.pods_project.build_configurations.each do |config|
-      __apply_Xcode_12_5_M1_post_install_workaround(installer)
       config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
     end
   end

@@ -8,14 +8,14 @@ beforeAll(async () => {
   if (device.getPlatform() === 'android') {
     // connecting to metro
     await device.reverseTcpPort(8081);
-    // connecting to hardhat
+    // connecting to anvil
     await device.reverseTcpPort(8545); // TODO: WIP for android connecting in dev
 
     // make sure we don't have gesture navigation what might cause collisions
     exec('yarn adb-all shell cmd overlay enable com.android.internal.systemui.navbar.threebutton');
   }
   await device.clearKeychain();
-  await device.launchApp({ newInstance: true, delete: true });
+  await device.launchApp({ newInstance: true, delete: true, launchArgs: { IS_TEST: true } });
   await device.setURLBlacklist([
     '.*api.thegraph.com.*',
     '.*gateway-arbitrum.network.thegraph.com.*',

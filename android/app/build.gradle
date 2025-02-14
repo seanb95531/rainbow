@@ -1,7 +1,7 @@
 apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
-
 
 def getPassword(String currentUser, String keyChain) {
     def stdout = new ByteArrayOutputStream()
@@ -29,15 +29,9 @@ def getPassword(String currentUser, String keyChain) {
     stdout.toString().trim()
 }
 
-
 import com.android.build.OutputFile
 
-
-
 apply plugin: "com.facebook.react"
-
-
-
 apply from: "../../node_modules/@sentry/react-native/sentry.gradle"
 
 react {
@@ -83,7 +77,12 @@ react {
 	    //
 	    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
 	    // hermesFlags = ["-O", "-output-source-map"]
-	}
+	    //
+    // Added by install-expo-modules
+    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli')"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
+}
 
 /**
  * Set this to true to create two separate APKs instead of one:
@@ -113,11 +112,9 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
-
-
 android {
     def envFile = project.file('../../.env')
-    def env =[:]
+    def env = [:]
     envFile.eachLine {
         if (it.contains('=') && (!it.startsWith("#"))) {
             def (key, value) = it.split('=')
@@ -125,18 +122,8 @@ android {
         }
     }
 
-    def props = project.file('src/main/java/me/rainbow/MainApplication.java')
-    def contents2 = props.getText( 'UTF-8' ).replaceAll( "//_REA ", '' ).replaceAll('/\\* REA', '//_REA /* REA')
-    props.delete()
-    props << contents2
-
-    if (env.get('DISABLE_REANIMATED_IN_DEV') == 'YES') {
-        def contents = props.getText( 'UTF-8' ).replaceAll( "//_REA ", '' )
-        props.delete()
-        props << contents
-    }
-
-    compileSdkVersion rootProject.ext.compileSdkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -148,24 +135,24 @@ android {
         applicationId "me.rainbow"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 218
-        versionName "1.9.28"
+        versionCode 254
+        versionName "1.9.59"
         missingDimensionStrategy 'react-native-camera', 'general'
         renderscriptTargetApi 23
         renderscriptSupportModeEnabled true
         multiDexEnabled true
-        testBuildType System.getProperty('testBuildType', 'debug')  // This will later be used to control the test apk build type
+        testBuildType System.getProperty('testBuildType', 'debug')
+        missingDimensionStrategy 'detox', 'full'        
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 
         manifestPlaceholders = [
-		    BRANCH_KEY: env.get('BRANCH_KEY')
-	    ]
+            BRANCH_KEY: env.get('BRANCH_KEY')
+        ]
 
         ndk {
-            abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
     }
-
 
     signingConfigs {
         debug {
@@ -196,7 +183,7 @@ android {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             // Detox-specific additions to pro-guard
-            //proguardFile "${rootProject.projectDir}/../node_modules/detox/android/detox/proguard-rules-app.pro"
+            proguardFile "${rootProject.projectDir}/../node_modules/detox/android/detox/proguard-rules-app.pro"
         }
     }
 
@@ -208,8 +195,17 @@ android {
         pickFirst '**/x86_64/libc++_shared.so'
         pickFirst '**/x86/libjsc.so'
         pickFirst '**/armeabi-v7a/libjsc.so'
+        // exclude
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/license.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/notice.txt'
+        exclude 'META-INF/ASL2.0'
+        exclude("META-INF/*.kotlin_module")
     }
-
 }
 
 dependencies {
@@ -217,11 +213,19 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     
-    implementation 'io.github.novacrypto:BIP39:2019.01.27'
-    implementation 'com.google.android.play:core:1.8.2'
+    implementation("com.github.NovaCrypto:BIP39:0e7fa95f80") {
+        exclude group: "io.github.novacrypto", module: "ToRuntime"
+        exclude group: "io.github.novacrypto", module: "SHA256"
+    }
+    implementation("com.github.NovaCrypto:Sha256:57bed72da5") {
+        exclude group: "io.github.novacrypto", module: "ToRuntime"
+    }
+    implementation "com.github.NovaCrypto:ToRuntime:c3ae3080eb"
+
+    implementation 'com.google.android.play:review:2.0.1'
+    implementation 'com.google.android.play:app-update:2.1.0'
     implementation 'com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava'
-    implementation "androidx.core:core-splashscreen:1.0.0"
-    implementation project(':react-native-plaid-link-sdk')
+    implementation "androidx.core:core-splashscreen:1.0.1"
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -230,8 +234,8 @@ dependencies {
     }
 
     // DETOX
-    //androidTestImplementation('com.wix:detox:+')
-
+    androidTestImplementation('com.wix:detox:+') { transitive = true }
+    androidTestImplementation(project(path: ":detox"))
 }
 
 // Run this once to be able to run the application with BUCK
@@ -242,6 +246,3 @@ task copyDownloadableDepsToLibs(type: Copy) {
 }
 
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
-
-
-

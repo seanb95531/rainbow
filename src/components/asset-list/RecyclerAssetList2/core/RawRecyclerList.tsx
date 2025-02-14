@@ -13,7 +13,7 @@ import rowRenderer from './RowRenderer';
 import { BaseCellType, CellTypes, RecyclerListViewRef } from './ViewTypes';
 import getLayoutProvider from './getLayoutProvider';
 import useLayoutItemAnimator from './useLayoutItemAnimator';
-import { UniqueAsset } from '@/entities';
+import { NativeCurrencyKey, UniqueAsset } from '@/entities';
 import { useRecyclerListViewScrollToTopContext } from '@/navigation/RecyclerListViewScrollToTopContext';
 import { useAccountSettings, useCoinListEdited, useCoinListEditOptions, useWallets } from '@/hooks';
 import { useNavigation } from '@/navigation';
@@ -21,6 +21,10 @@ import { useTheme } from '@/theme';
 import { remoteCardsStore } from '@/state/remoteCards/remoteCards';
 import { useRoute } from '@react-navigation/native';
 import Routes from '@/navigation/routesNames';
+import { useRemoteConfig } from '@/model/remoteConfig';
+import { useExperimentalConfig } from '@/config/experimentalHooks';
+import { useUserAssetsStore } from '@/state/assets/userAssets';
+import { UniqueId } from '@/__swaps__/types/assets';
 
 const dataProvider = new DataProvider((r1, r2) => {
   return r1.uid !== r2.uid;
@@ -29,10 +33,10 @@ const dataProvider = new DataProvider((r1, r2) => {
 export type ExtendedState = {
   theme: any;
   nativeCurrencySymbol: string;
-  nativeCurrency: string;
+  nativeCurrency: NativeCurrencyKey;
   navigate: any;
   isCoinListEdited: boolean;
-  hiddenCoins: BooleanMap;
+  hiddenAssets: Set<UniqueId>;
   pinnedCoins: BooleanMap;
   toggleSelectedCoin: (id: string) => void;
   setIsCoinListEdited: SetterOrUpdater<boolean>;
@@ -54,9 +58,12 @@ const RawMemoRecyclerAssetList = React.memo(function RawRecyclerAssetList({
   scrollIndicatorInsets?: object;
   type?: AssetListType;
 }) {
+  const remoteConfig = useRemoteConfig();
+  const experimentalConfig = useExperimentalConfig();
   const currentDataProvider = useMemoOne(() => dataProvider.cloneWithRows(briefSectionsData), [briefSectionsData]);
   const { isCoinListEdited, setIsCoinListEdited } = useCoinListEdited();
   const y = useRecyclerAssetListPosition()!;
+  const hiddenAssets = useUserAssetsStore(state => state.hiddenAssets);
 
   const { name } = useRoute();
   const getCardIdsForScreen = remoteCardsStore(state => state.getCardIdsForScreen);
@@ -65,8 +72,16 @@ const RawMemoRecyclerAssetList = React.memo(function RawRecyclerAssetList({
   const cardIds = useMemo(() => getCardIdsForScreen(name as keyof typeof Routes), [getCardIdsForScreen, name]);
 
   const layoutProvider = useMemo(
-    () => getLayoutProvider(briefSectionsData, isCoinListEdited, cardIds, isReadOnlyWallet),
-    [briefSectionsData, isCoinListEdited, cardIds, isReadOnlyWallet]
+    () =>
+      getLayoutProvider({
+        briefSectionsData,
+        isCoinListEdited,
+        cardIds,
+        isReadOnlyWallet,
+        remoteConfig,
+        experimentalConfig,
+      }),
+    [briefSectionsData, isCoinListEdited, cardIds, isReadOnlyWallet, remoteConfig, experimentalConfig]
   );
 
   const { accountAddress } = useAccountSettings();
@@ -117,18 +132,18 @@ const RawMemoRecyclerAssetList = React.memo(function RawRecyclerAssetList({
 
   const theme = useTheme();
   const { nativeCurrencySymbol, nativeCurrency } = useAccountSettings();
-  const { hiddenCoinsObj: hiddenCoins, pinnedCoinsObj: pinnedCoins, toggleSelectedCoin } = useCoinListEditOptions();
+  const { pinnedCoinsObj: pinnedCoins, toggleSelectedCoin } = useCoinListEditOptions();
 
   const { navigate } = useNavigation();
 
   const mergedExtendedState = useMemo<ExtendedState>(() => {
     return {
       ...extendedState,
-      hiddenCoins,
       isCoinListEdited,
       nativeCurrency,
       nativeCurrencySymbol,
       navigate,
+      hiddenAssets,
       pinnedCoins,
       setIsCoinListEdited,
       theme,
@@ -136,15 +151,15 @@ const RawMemoRecyclerAssetList = React.memo(function RawRecyclerAssetList({
     };
   }, [
     extendedState,
-    theme,
-    navigate,
-    nativeCurrencySymbol,
-    nativeCurrency,
-    pinnedCoins,
-    hiddenCoins,
-    toggleSelectedCoin,
     isCoinListEdited,
+    nativeCurrency,
+    nativeCurrencySymbol,
+    navigate,
+    hiddenAssets,
+    pinnedCoins,
     setIsCoinListEdited,
+    theme,
+    toggleSelectedCoin,
   ]);
 
   return (

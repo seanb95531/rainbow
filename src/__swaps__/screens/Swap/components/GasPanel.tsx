@@ -1,14 +1,13 @@
 import * as i18n from '@/languages';
-import React, { PropsWithChildren, ReactNode, useCallback, useMemo } from 'react';
+import React, { PropsWithChildren, ReactNode, useMemo } from 'react';
 import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, withDelay, withSpring } from 'react-native-reanimated';
 
-import { MIN_FLASHBOTS_PRIORITY_FEE, THICK_BORDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
+import { THICK_BORDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
 import { NavigationSteps, useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
-import { ChainId } from '@/__swaps__/types/chains';
+import { ChainId } from '@/state/backendNetworks/types';
 import { GasSpeed } from '@/__swaps__/types/gas';
-import { gweiToWei, weiToGwei } from '@/__swaps__/utils/ethereum';
+import { gweiToWei, weiToGwei } from '@/parsers';
 import {
-  GasSuggestion,
   getCachedCurrentBaseFee,
   getSelectedSpeedSuggestion,
   useBaseFee,
@@ -17,13 +16,12 @@ import {
   useMeteorologySuggestion,
   useMeteorologySuggestions,
 } from '@/__swaps__/utils/meteorology';
-import { add, formatNumber, greaterThan, multiply, subtract } from '@/__swaps__/utils/numbers';
+import { add, greaterThan, multiply, subtract, lessThan, formatNumber } from '@/helpers/utilities';
 import { opacity } from '@/__swaps__/utils/swaps';
 import { ButtonPressAnimation } from '@/components/animations';
 import { SPRING_CONFIGS } from '@/components/animations/animationConfigs';
 import { Bleed, Box, Inline, Separator, Stack, Text, globalColors, useColorMode, useForegroundColor } from '@/design-system';
 import { IS_ANDROID } from '@/env';
-import { lessThan } from '@/helpers/utilities';
 import { useNavigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import { createRainbowStore } from '@/state/internal/createRainbowStore';
@@ -237,9 +235,8 @@ function useGasPanelState<
   const { data: suggestedSetting } = useMeteorologySuggestion({
     chainId,
     speed,
-    select: useCallback((d?: GasSuggestion) => option && d?.[option], [option]),
+    select,
     enabled: !editedSetting,
-    notifyOnChangeProps: !editedSetting && speed !== 'custom' ? ['data'] : [],
   });
 
   if (editedSetting) return editedSetting;
@@ -250,11 +247,15 @@ function useGasPanelState<
 const setGasPanelState = (update: Partial<GasPanelState>) => {
   const chainId = useSwapsStore.getState().inputAsset?.chainId || ChainId.mainnet;
 
-  const currentGasSettings = getCustomGasSettings(chainId);
-  if (currentGasSettings) useGasPanelStore.setState({ ...currentGasSettings, ...update });
+  useGasPanelStore.setState(state => {
+    if (state) return { ...state, ...update };
 
-  const suggestion = getSelectedSpeedSuggestion(chainId);
-  useGasPanelStore.setState({ ...suggestion, ...update });
+    const currentGasSettings = getCustomGasSettings(chainId);
+    if (currentGasSettings) return { ...currentGasSettings, ...update };
+
+    const suggestion = getSelectedSpeedSuggestion(chainId);
+    return { ...suggestion, ...update };
+  });
 };
 
 const likely_to_fail = i18n.t(i18n.l.gas.likely_to_fail);
@@ -317,10 +318,6 @@ function EditMaxBaseFee() {
 
 function EditPriorityFee() {
   const { navigate } = useNavigation();
-
-  const isFlashbotsEnabled = useSwapsStore(s => s.flashbots);
-  const min = isFlashbotsEnabled ? MIN_FLASHBOTS_PRIORITY_FEE : '0';
-
   const maxPriorityFee = useGasPanelState('maxPriorityFee');
 
   return (
@@ -328,7 +325,7 @@ function EditPriorityFee() {
       <PressableLabel onPress={() => navigate(Routes.EXPLAIN_SHEET, { type: MINER_TIP_TYPE })}>
         {i18n.t(i18n.l.gas.miner_tip)}
       </PressableLabel>
-      <GasSettingInput value={maxPriorityFee} onChange={maxPriorityFee => setGasPanelState({ maxPriorityFee })} min={min} />
+      <GasSettingInput value={maxPriorityFee} onChange={maxPriorityFee => setGasPanelState({ maxPriorityFee })} min={'0'} />
     </Inline>
   );
 }
@@ -350,8 +347,7 @@ function EditGasPrice() {
 
 const stateToGasSettings = (s: GasPanelState | undefined): GasSettings | undefined => {
   if (!s) return getSelectedGas(swapsStore.getState().inputAsset?.chainId || ChainId.mainnet);
-  if (s.gasPrice) return { isEIP1559: false, gasPrice: s.gasPrice || '0' };
-  return { isEIP1559: true, maxBaseFee: s.maxBaseFee || '0', maxPriorityFee: s.maxPriorityFee || '0' };
+  return { isEIP1559: !('gasPrice' in s && !!s.gasPrice), ...s } as GasSettings;
 };
 
 function MaxTransactionFee() {
@@ -426,7 +422,8 @@ export function GasPanel() {
       if (previous === NavigationSteps.SHOW_GAS && current !== NavigationSteps.SHOW_GAS) {
         runOnJS(saveCustomGasSettings)();
       }
-    }
+    },
+    []
   );
 
   const styles = useAnimatedStyle(() => {
@@ -437,12 +434,11 @@ export function GasPanel() {
         configProgress.value === NavigationSteps.SHOW_GAS
           ? withDelay(120, withSpring(1, SPRING_CONFIGS.springConfig))
           : withSpring(0, SPRING_CONFIGS.springConfig),
-      flex: 1,
     };
   });
 
   return (
-    <Box as={Animated.View} paddingHorizontal="12px" zIndex={12} style={styles} testID="gas-panel" width="full">
+    <Box as={Animated.View} paddingHorizontal="12px" zIndex={12} style={[styles, { flex: 1 }]} testID="gas-panel" width="full">
       <Stack alignHorizontal="center" space="28px">
         <Text weight="heavy" color="label" size="20pt">
           {i18n.t(i18n.l.gas.gas_settings)}
@@ -450,7 +446,6 @@ export function GasPanel() {
 
         <Box gap={24} width="full" alignItems="stretch">
           <Box gap={24} height="104px">
-            <CurrentBaseFee />
             <EditableGasSettings />
           </Box>
 

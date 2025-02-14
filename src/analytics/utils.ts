@@ -1,11 +1,15 @@
 import { nanoid } from 'nanoid/non-secure';
 import { SECURE_WALLET_HASH_KEY } from 'react-native-dotenv';
+import type { Address } from 'viem';
 
 import * as ls from '@/storage';
 import * as keychain from '@/model/keychain';
 import { analyticsUserIdentifier } from '@/utils/keychainConstants';
 import { logger, RainbowError } from '@/logger';
 import { computeHmac, SupportedAlgorithm } from '@ethersproject/sha2';
+import { findWalletWithAccount } from '@/helpers/findWalletWithAccount';
+import store from '@/redux/store';
+import { EthereumWalletType } from '@/helpers/walletTypes';
 
 /**
  * Returns the device id in a type-safe manner. It will throw if no device ID
@@ -35,7 +39,7 @@ export async function getOrCreateDeviceId(): Promise<[string, boolean]> {
   const deviceIdFromStorage = ls.device.get(['id']);
 
   if (deviceIdFromStorage) {
-    logger.debug(`getOrCreateDeviceId using existing deviceId from storage`);
+    logger.debug(`[getOrCreateDeviceId]: using existing deviceId from storage ${deviceIdFromStorage}`);
     // if we have a ID in storage, we've already migrated
     return [deviceIdFromStorage, false];
   } else {
@@ -47,21 +51,20 @@ export async function getOrCreateDeviceId(): Promise<[string, boolean]> {
     // set ID
     ls.device.set(['id'], deviceId);
 
-    // log to Sentry
     if (hasExistingDeviceId) {
-      logger.info(`getOrCreateDeviceId migrating device ID from keychain to local storage`);
+      logger.debug(`[getOrCreateDeviceId]: migrating device ID from keychain to local storage`);
     }
 
-    logger.debug(`getOrCreateDeviceId returned new deviceId`);
+    logger.debug(`[getOrCreateDeviceId]: returned new deviceId ${deviceId}`);
 
     // if we had an old device id in keychain, `wasCreated` should be false
     return [deviceId, !hasExistingDeviceId];
   }
 }
 
-export function securelyHashWalletAddress(walletAddress: `0x${string}`): string | undefined {
+function securelyHashWalletAddress(walletAddress: Address): string | undefined {
   if (!SECURE_WALLET_HASH_KEY) {
-    logger.error(new RainbowError(`Required .env variable SECURE_WALLET_HASH_KEY does not exist`));
+    logger.error(new RainbowError(`[securelyHashWalletAddress]: Required .env variable SECURE_WALLET_HASH_KEY does not exist`));
   }
 
   try {
@@ -73,11 +76,41 @@ export function securelyHashWalletAddress(walletAddress: `0x${string}`): string 
       walletAddress
     );
 
-    logger.debug(`Wallet address securely hashed`);
+    logger.debug(`[securelyHashWalletAddress]: Wallet address securely hashed`);
 
     return hmac;
   } catch (e) {
     // could be an invalid hashing key, or trying to hash an ENS
-    logger.error(new RainbowError(`Wallet address hashing failed`));
+    logger.error(new RainbowError(`[securelyHashWalletAddress]: Wallet address hashing failed`));
   }
+}
+
+export type WalletContext = {
+  walletType?: 'owned' | 'hardware' | 'watched';
+  walletAddressHash?: string;
+};
+
+export async function getWalletContext(address: Address): Promise<WalletContext> {
+  // currentAddressStore address is initialized to ''
+  if (!address || address === ('' as Address)) return {};
+
+  // walletType maybe undefined after initial wallet creation
+  const { wallets } = store.getState();
+  const wallet = findWalletWithAccount(wallets.wallets || {}, address);
+
+  const walletType = (
+    {
+      [EthereumWalletType.mnemonic]: 'owned',
+      [EthereumWalletType.privateKey]: 'owned',
+      [EthereumWalletType.seed]: 'owned',
+      [EthereumWalletType.readOnly]: 'watched',
+      [EthereumWalletType.bluetooth]: 'hardware',
+    } as const
+  )[wallet?.type!];
+  const walletAddressHash = securelyHashWalletAddress(address);
+
+  return {
+    walletType,
+    walletAddressHash,
+  };
 }

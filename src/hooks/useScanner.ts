@@ -8,7 +8,6 @@ import { parseUri } from '@walletconnect/utils';
 import { Alert } from '../components/alerts';
 import useExperimentalFlag, { PROFILES } from '../config/experimentalHooks';
 import { useNavigation } from '../navigation/Navigation';
-import useWalletConnectConnections from './useWalletConnectConnections';
 import { fetchReverseRecordWithRetry } from '@/utils/profileUtils';
 import { analytics } from '@/analytics';
 import { checkIsValidAddressOrDomain, isENSAddressFormat } from '@/helpers/validators';
@@ -16,24 +15,23 @@ import { Navigation } from '@/navigation';
 import { POAP_BASE_URL, RAINBOW_PROFILES_BASE_URL } from '@/references';
 import Routes from '@/navigation/routesNames';
 import { addressUtils, ethereumUtils, haptics } from '@/utils';
-import logger from '@/utils/logger';
+import { logger, RainbowError } from '@/logger';
 import { checkPushNotificationPermissions } from '@/notifications/permissions';
 import { pair as pairWalletConnect } from '@/walletConnect';
 import { getPoapAndOpenSheetWithQRHash, getPoapAndOpenSheetWithSecretWord } from '@/utils/poaps';
 
 export default function useScanner(enabled: boolean, onSuccess: () => unknown) {
   const { navigate, goBack } = useNavigation();
-  const { walletConnectOnSessionRequest } = useWalletConnectConnections();
   const profilesEnabled = useExperimentalFlag(PROFILES);
   const enabledVar = useRef<boolean>();
 
   const enableScanning = useCallback(() => {
-    logger.log('📠✅ Enabling QR Code Scanner');
+    logger.debug('[useScanner]: 📠✅  Enabling QR Code Scanner');
     enabledVar.current = true;
   }, [enabledVar]);
 
   const disableScanning = useCallback(() => {
-    logger.log('📠🚫 Disabling QR Code Scanner');
+    logger.debug('[useScanner]: 📠🚫  Disabling QR Code Scanner');
     enabledVar.current = false;
   }, [enabledVar]);
 
@@ -108,16 +106,14 @@ export default function useScanner(enabled: boolean, onSuccess: () => unknown) {
       onSuccess();
       try {
         const { version } = parseUri(uri);
-        if (version === 1) {
-          await walletConnectOnSessionRequest(uri, connector, () => {});
-        } else if (version === 2) {
+        if (version === 2) {
           await pairWalletConnect({ uri, connector });
         }
-      } catch (e) {
-        logger.log('walletConnectOnSessionRequest exception', e);
+      } catch (error) {
+        logger.error(new RainbowError(`[useScanner]: Error handling WalletConnect QR code: ${error}`));
       }
     },
-    [goBack, onSuccess, walletConnectOnSessionRequest]
+    [goBack, onSuccess]
   );
 
   const handleScanInvalid = useCallback(
@@ -190,14 +186,14 @@ export default function useScanner(enabled: boolean, onSuccess: () => unknown) {
 
       if (lowerCaseData.startsWith(`${RAINBOW_PROFILES_BASE_URL}/poap`)) {
         const secretWordOrQrHash = lowerCaseData.split(`${RAINBOW_PROFILES_BASE_URL}/poap/`)?.[1];
-        logger.log('onScan: handling poap scan', { secretWordOrQrHash });
+        logger.debug('[useScanner]: handling poap scan', { secretWordOrQrHash });
         await getPoapAndOpenSheetWithSecretWord(secretWordOrQrHash, true);
         return getPoapAndOpenSheetWithQRHash(secretWordOrQrHash, true);
       }
 
       if (lowerCaseData.startsWith(`rainbow://poap`)) {
         const secretWordOrQrHash = lowerCaseData.split(`rainbow://poap/`)?.[1];
-        logger.log('onScan: handling poap scan', { secretWordOrQrHash });
+        logger.debug('[useScanner]: handling poap scan', { secretWordOrQrHash });
         await getPoapAndOpenSheetWithSecretWord(secretWordOrQrHash, true);
         return getPoapAndOpenSheetWithQRHash(secretWordOrQrHash, true);
       }

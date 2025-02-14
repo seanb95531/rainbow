@@ -2,16 +2,16 @@ import { Block, Provider } from '@ethersproject/abstract-provider';
 import { MaxUint256 } from '@ethersproject/constants';
 import { Contract, PopulatedTransaction } from '@ethersproject/contracts';
 import { StaticJsonRpcProvider } from '@ethersproject/providers';
-import { ALLOWS_PERMIT, CrosschainQuote, Quote, getQuoteExecutionDetails, getRainbowRouterContractAddress } from '@rainbow-me/swaps';
+import { CrosschainQuote, Quote, getQuoteExecutionDetails, getRainbowRouterContractAddress } from '@rainbow-me/swaps';
 import { mainnet } from 'viem/chains';
 import { Chain, erc20Abi } from 'viem';
-import { Network } from '@/helpers';
 import { GasFeeParamsBySpeed, LegacyGasFeeParamsBySpeed, LegacyTransactionGasParamAmounts, TransactionGasParamAmounts } from '@/entities';
-import { ethereumUtils, gasUtils } from '@/utils';
+import { gasUtils } from '@/utils';
 import { add, greaterThan, multiply } from '@/helpers/utilities';
-import { ChainId } from '@/__swaps__/types/chains';
+import { ChainId } from '@/state/backendNetworks/types';
 import { gasUnits } from '@/references';
 import { toHexNoLeadingZeros } from '@/handlers/web3';
+import { BigNumber } from '@ethersproject/bignumber';
 
 export const CHAIN_IDS_WITH_TRACE_SUPPORT: ChainId[] = [mainnet.id];
 export const SWAP_GAS_PADDING = 1.1;
@@ -29,7 +29,7 @@ export const overrideWithFastSpeedIfNeeded = ({
   chainId: number;
   gasFeeParamsBySpeed: GasFeeParamsBySpeed | LegacyGasFeeParamsBySpeed;
 }): TransactionGasParamAmounts | LegacyTransactionGasParamAmounts => {
-  if (chainId !== ethereumUtils.getChainIdFromNetwork(Network.mainnet)) {
+  if (chainId !== ChainId.mainnet) {
     return gasParams;
   }
   const transactionGasParams = gasParams as TransactionGasParamAmounts;
@@ -71,7 +71,7 @@ const getStateDiff = async (provider: Provider, quote: Quote | CrosschainQuote):
       value: '0x0',
     },
     ['stateDiff'],
-    blockNumber - TRACE_CALL_BLOCK_NUMBER_OFFSET,
+    toHexNoLeadingZeros(blockNumber - TRACE_CALL_BLOCK_NUMBER_OFFSET),
   ];
 
   const trace = await (provider as StaticJsonRpcProvider).send('trace_call', callParams);
@@ -141,14 +141,7 @@ const getClosestGasEstimate = async (estimationFn: (gasEstimate: number) => Prom
 };
 
 export const getDefaultGasLimitForTrade = (quote: Quote, chainId: Chain['id']): string => {
-  const allowsPermit = chainId === mainnet.id && ALLOWS_PERMIT[quote?.sellTokenAddress?.toLowerCase()];
-
-  let defaultGasLimit = quote?.defaultGasLimit;
-
-  if (allowsPermit) {
-    defaultGasLimit = Math.max(Number(defaultGasLimit), Number(multiply(gasUnits.basic_swap_permit, EXTRA_GAS_PADDING))).toString();
-  }
-  return defaultGasLimit || multiply(gasUnits.basic_swap[chainId], EXTRA_GAS_PADDING);
+  return quote?.defaultGasLimit || multiply(gasUnits.basic_swap[chainId], EXTRA_GAS_PADDING);
 };
 
 export const estimateSwapGasLimitWithFakeApproval = async (
@@ -204,15 +197,24 @@ export const populateSwap = async ({
   provider: Provider;
   quote: Quote | CrosschainQuote;
 }): Promise<PopulatedTransaction | null> => {
-  try {
-    const { router, methodName, params, methodArgs } = getQuoteExecutionDetails(
-      quote,
-      { from: quote.from },
-      provider as StaticJsonRpcProvider
-    );
-    const swapTransaction = await router.populateTransaction[methodName](...(methodArgs ?? []), params);
-    return swapTransaction;
-  } catch (e) {
-    return null;
+  if (quote.swapType === 'cross-chain') {
+    return {
+      to: quote.to,
+      from: quote.from,
+      data: quote.data,
+      value: BigNumber.from(quote.value),
+    };
+  } else {
+    try {
+      const { router, methodName, params, methodArgs } = getQuoteExecutionDetails(
+        quote,
+        { from: quote.from },
+        provider as StaticJsonRpcProvider
+      );
+      const swapTransaction = await router.populateTransaction[methodName](...(methodArgs ?? []), params);
+      return swapTransaction;
+    } catch (e) {
+      return null;
+    }
   }
 };

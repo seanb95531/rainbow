@@ -1,4 +1,4 @@
-// @ts-ignore
+// @ts-expect-error - changeIcon has no declaration file
 import { changeIcon } from 'react-native-change-icon';
 import lang from 'i18n-js';
 import { Dispatch } from 'redux';
@@ -10,24 +10,21 @@ import { WrappedAlert as Alert } from '@/helpers/alert';
 
 import {
   getAppIcon,
-  getFlashbotsEnabled,
+  getChainId,
   getLanguage,
   getNativeCurrency,
-  getNetwork,
   getTestnetsEnabled,
   saveAppIcon,
-  saveFlashbotsEnabled,
+  saveChainId,
   saveLanguage,
   saveNativeCurrency,
-  saveNetwork,
   saveTestnetsEnabled,
 } from '@/handlers/localstorage/globalSettings';
-import { web3SetHttpProvider } from '@/handlers/web3';
-import { Network } from '@/helpers/networkTypes';
-import { explorerClearState, explorerInit } from '@/redux/explorer';
+import { getProvider } from '@/handlers/web3';
 import { AppState } from '@/redux/store';
-import { ethereumUtils } from '@/utils';
-import logger from '@/utils/logger';
+import { logger, RainbowError } from '@/logger';
+import { Network, ChainId } from '@/state/backendNetworks/types';
+import { Address } from 'viem';
 
 // -- Constants ------------------------------------------------------------- //
 const SETTINGS_UPDATE_SETTINGS_ADDRESS = 'settings/SETTINGS_UPDATE_SETTINGS_ADDRESS';
@@ -36,7 +33,6 @@ const SETTINGS_UPDATE_APP_ICON_SUCCESS = 'settings/SETTINGS_UPDATE_APP_ICON_SUCC
 const SETTINGS_UPDATE_LANGUAGE_SUCCESS = 'settings/SETTINGS_UPDATE_LANGUAGE_SUCCESS';
 const SETTINGS_UPDATE_NETWORK_SUCCESS = 'settings/SETTINGS_UPDATE_NETWORK_SUCCESS';
 const SETTINGS_UPDATE_TESTNET_PREF_SUCCESS = 'settings/SETTINGS_UPDATE_TESTNET_PREF_SUCCESS';
-const SETTINGS_UPDATE_FLASHBOTS_PREF_SUCCESS = 'settings/SETTINGS_UPDATE_FLASHBOTS_PREF_SUCCESS';
 const SETTINGS_UPDATE_ACCOUNT_SETTINGS_SUCCESS = 'settings/SETTINGS_UPDATE_ACCOUNT_SETTINGS_SUCCESS';
 
 // -- Actions --------------------------------------------------------------- //
@@ -46,9 +42,8 @@ const SETTINGS_UPDATE_ACCOUNT_SETTINGS_SUCCESS = 'settings/SETTINGS_UPDATE_ACCOU
  */
 interface SettingsState {
   appIcon: string;
-  accountAddress: string;
+  accountAddress: Address;
   chainId: number;
-  flashbotsEnabled: boolean;
   language: Language;
   nativeCurrency: NativeCurrencyKey;
   network: Network;
@@ -64,7 +59,6 @@ type SettingsStateUpdateAction =
   | SettingsStateUpdateAppIconSuccessAction
   | SettingsStateUpdateNetworkSuccessAction
   | SettingsStateUpdateTestnetPrefAction
-  | SettingsStateUpdateFlashbotsPrefAction
   | SettingsStateUpdateNativeCurrencyAndTestnetsSuccessAction
   | SettingsStateUpdateLanguageSuccessAction;
 
@@ -87,7 +81,6 @@ interface SettingsStateUpdateNativeCurrencyAndTestnetsSuccessAction {
   payload: {
     nativeCurrency: SettingsState['nativeCurrency'];
     testnetsEnabled: SettingsState['testnetsEnabled'];
-    flashbotsEnabled: SettingsState['flashbotsEnabled'];
   };
 }
 
@@ -96,16 +89,10 @@ interface SettingsStateUpdateTestnetPrefAction {
   payload: SettingsState['testnetsEnabled'];
 }
 
-interface SettingsStateUpdateFlashbotsPrefAction {
-  type: typeof SETTINGS_UPDATE_FLASHBOTS_PREF_SUCCESS;
-  payload: SettingsState['flashbotsEnabled'];
-}
-
 interface SettingsStateUpdateNetworkSuccessAction {
   type: typeof SETTINGS_UPDATE_NETWORK_SUCCESS;
   payload: {
     chainId: SettingsState['chainId'];
-    network: SettingsState['network'];
   };
 }
 
@@ -132,34 +119,30 @@ export const settingsLoadState =
         type: SETTINGS_UPDATE_APP_ICON_SUCCESS,
       });
 
-      const flashbotsEnabled = await getFlashbotsEnabled();
-
       analytics.identify({
         currency: nativeCurrency,
-        enabledFlashbots: flashbotsEnabled,
         enabledTestnets: testnetsEnabled,
       });
 
       dispatch({
-        payload: { flashbotsEnabled, nativeCurrency, testnetsEnabled },
+        payload: { nativeCurrency, testnetsEnabled },
         type: SETTINGS_UPDATE_ACCOUNT_SETTINGS_SUCCESS,
       });
     } catch (error) {
-      logger.log('Error loading native currency and testnets pref', error);
+      logger.error(new RainbowError(`[redux/settings]: Error loading native currency and testnets pref: ${error}`));
     }
   };
 
 export const settingsLoadNetwork = () => async (dispatch: Dispatch<SettingsStateUpdateNetworkSuccessAction>) => {
   try {
-    const network = await getNetwork();
-    const chainId = ethereumUtils.getChainIdFromNetwork(network);
-    await web3SetHttpProvider(network);
+    const chainId = await getChainId();
+    getProvider({ chainId });
     dispatch({
-      payload: { chainId, network },
+      payload: { chainId },
       type: SETTINGS_UPDATE_NETWORK_SUCCESS,
     });
   } catch (error) {
-    logger.log('Error loading network settings', error);
+    logger.error(new RainbowError(`[redux/settings]: Error loading network settings: ${error}`));
   }
 };
 
@@ -175,7 +158,7 @@ export const settingsLoadLanguage = () => async (dispatch: Dispatch<SettingsStat
       language,
     });
   } catch (error) {
-    logger.log('Error loading language settings', error);
+    logger.error(new RainbowError(`[redux/settings]: Error loading language settings: ${error}`));
   }
 };
 
@@ -190,17 +173,17 @@ export const settingsChangeTestnetsEnabled =
 
 export const settingsChangeAppIcon = (appIcon: string) => (dispatch: Dispatch<SettingsStateUpdateAppIconSuccessAction>) => {
   const callback = async () => {
-    logger.log('changing app icon to', appIcon);
+    logger.debug(`[redux/settings]: changing app icon to ${appIcon}`);
     try {
       await changeIcon(appIcon);
-      logger.log('icon changed to ', appIcon);
+      logger.debug(`[redux/settings]: icon changed to ${appIcon}`);
       saveAppIcon(appIcon);
       dispatch({
         payload: appIcon,
         type: SETTINGS_UPDATE_APP_ICON_SUCCESS,
       });
     } catch (error) {
-      logger.log('Error changing app icon', error);
+      logger.error(new RainbowError(`[redux/settings]: Error changing app icon: ${error}`));
     }
   };
 
@@ -220,34 +203,24 @@ export const settingsChangeAppIcon = (appIcon: string) => (dispatch: Dispatch<Se
   }
 };
 
-export const settingsChangeFlashbotsEnabled =
-  (flashbotsEnabled: boolean) => async (dispatch: Dispatch<SettingsStateUpdateFlashbotsPrefAction>) => {
-    dispatch({
-      payload: flashbotsEnabled,
-      type: SETTINGS_UPDATE_FLASHBOTS_PREF_SUCCESS,
-    });
-    saveFlashbotsEnabled(flashbotsEnabled);
-  };
-
 export const settingsUpdateAccountAddress =
   (accountAddress: string) => async (dispatch: Dispatch<SettingsStateUpdateSettingsAddressAction>) => {
     dispatch({
-      payload: accountAddress,
+      payload: accountAddress as Address,
       type: SETTINGS_UPDATE_SETTINGS_ADDRESS,
     });
   };
 
-export const settingsUpdateNetwork = (network: Network) => async (dispatch: Dispatch<SettingsStateUpdateNetworkSuccessAction>) => {
-  const chainId = ethereumUtils.getChainIdFromNetwork(network);
-  await web3SetHttpProvider(network);
+export const settingsUpdateNetwork = (chainId: ChainId) => async (dispatch: Dispatch<SettingsStateUpdateNetworkSuccessAction>) => {
+  getProvider({ chainId });
   try {
     dispatch({
-      payload: { chainId, network },
+      payload: { chainId },
       type: SETTINGS_UPDATE_NETWORK_SUCCESS,
     });
-    saveNetwork(network);
+    saveChainId(chainId);
   } catch (error) {
-    logger.log('Error updating network settings', error);
+    logger.error(new RainbowError(`[redux/settings]: Error updating network settings: ${error}`));
   }
 };
 
@@ -261,33 +234,30 @@ export const settingsChangeLanguage = (language: Language) => async (dispatch: D
     saveLanguage(language);
     analytics.identify({ language });
   } catch (error) {
-    logger.log('Error changing language', error);
+    logger.error(new RainbowError(`[redux/settings]: Error changing language: ${error}`));
   }
 };
 
 export const settingsChangeNativeCurrency =
   (nativeCurrency: NativeCurrencyKey) =>
   async (dispatch: ThunkDispatch<AppState, unknown, SettingsStateUpdateNativeCurrencySuccessAction>) => {
-    dispatch(explorerClearState());
     try {
       dispatch({
         payload: nativeCurrency,
         type: SETTINGS_UPDATE_NATIVE_CURRENCY_SUCCESS,
       });
-      dispatch(explorerInit());
       saveNativeCurrency(nativeCurrency);
       analytics.identify({ currency: nativeCurrency });
     } catch (error) {
-      logger.log('Error changing native currency', error);
+      logger.error(new RainbowError(`[redux/settings]: Error changing native currency: ${error}`));
     }
   };
 
 // -- Reducer --------------------------------------------------------------- //
 export const INITIAL_STATE: SettingsState = {
-  accountAddress: '',
+  accountAddress: '' as Address,
   appIcon: 'og',
   chainId: 1,
-  flashbotsEnabled: false,
   language: Language.EN_US,
   nativeCurrency: NativeCurrencyKeys.USD,
   network: Network.mainnet,
@@ -315,7 +285,6 @@ export default (state = INITIAL_STATE, action: SettingsStateUpdateAction) => {
       return {
         ...state,
         chainId: action.payload.chainId,
-        network: action.payload.network,
       };
     case SETTINGS_UPDATE_LANGUAGE_SUCCESS:
       return {
@@ -325,7 +294,6 @@ export default (state = INITIAL_STATE, action: SettingsStateUpdateAction) => {
     case SETTINGS_UPDATE_ACCOUNT_SETTINGS_SUCCESS:
       return {
         ...state,
-        flashbotsEnabled: action.payload.flashbotsEnabled,
         nativeCurrency: action.payload.nativeCurrency,
         testnetsEnabled: action.payload.testnetsEnabled,
       };
@@ -333,11 +301,6 @@ export default (state = INITIAL_STATE, action: SettingsStateUpdateAction) => {
       return {
         ...state,
         testnetsEnabled: action.payload,
-      };
-    case SETTINGS_UPDATE_FLASHBOTS_PREF_SUCCESS:
-      return {
-        ...state,
-        flashbotsEnabled: action.payload,
       };
     default:
       return state;

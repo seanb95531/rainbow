@@ -25,16 +25,16 @@ import { ContactAvatar } from '@/components/contacts';
 import { isLowerCaseMatch } from '@/utils';
 import { useSelector } from 'react-redux';
 import { AppState } from '@/redux/store';
-import { useContacts, useUserAccounts } from '@/hooks';
+import { useAccountSettings, useContacts, useUserAccounts } from '@/hooks';
 import { useTiming } from 'react-native-redash';
 import Animated, { Easing, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { removeFirstEmojiFromString, returnStringFirstEmoji } from '@/helpers/emojiHandler';
 import { addressHashedColorIndex, addressHashedEmoji } from '@/utils/profileUtils';
 import ImageAvatar from '@/components/contacts/ImageAvatar';
 import RainbowCoinIcon from '@/components/coin-icon/RainbowCoinIcon';
-import { Network } from '@/networks/types';
 import * as lang from '@/languages';
-import { checkForPendingSwap } from '../helpers/checkForPendingSwap';
+import { checkForPendingSwap } from '@/helpers/checkForPendingSwap';
+import { ChainId } from '@/state/backendNetworks/types';
 
 const TransactionMastheadHeight = android ? 153 : 135;
 
@@ -79,9 +79,8 @@ function CurrencyTile({
   address?: string;
   onAddressCopied: () => void;
 }) {
-  const accountAddress = useSelector((state: AppState) => state.settings.accountAddress);
+  const { accountAddress } = useAccountSettings();
   const theme = useTheme();
-
   const { contacts } = useContacts();
 
   const { userAccounts, watchedAccounts } = useUserAccounts();
@@ -128,7 +127,7 @@ function CurrencyTile({
         }
       });
     }
-  }, []);
+  }, [accountName, address, addressContact?.nickname]);
 
   useEffect(() => {
     if (!addressAccount?.image && (fetchedEnsName || addressContact?.ens)) {
@@ -167,12 +166,10 @@ function CurrencyTile({
           <Box>
             {showAsset ? (
               <RainbowCoinIcon
-                size={40}
+                chainId={asset?.chainId || ChainId.mainnet}
+                color={asset?.colors?.primary || asset?.colors?.fallback || undefined}
                 icon={asset?.icon_url}
-                network={asset?.network || Network.mainnet}
                 symbol={asset?.symbol || ''}
-                theme={theme}
-                colors={asset?.colors}
               />
             ) : (
               <>
@@ -290,12 +287,13 @@ export default function TransactionMasthead({ transaction }: { transaction: Rain
     // NOTE: For pending transactions let's use the change value
     // since the balance hasn't been updated yet.
     if (isPendingSwap) {
-      const inAssetValueDisplay = `${handleSignificantDecimals(convertRawAmountToDecimalFormat(change?.value?.toString() || '0', change?.asset.decimals || 18), change?.asset.decimals || 18)} ${change?.asset.symbol}`;
+      const decimals = typeof change?.asset.decimals === 'number' ? change?.asset.decimals : 18;
+      const inAssetValueDisplay = `${handleSignificantDecimals(convertRawAmountToDecimalFormat(change?.value?.toString() || '0', decimals), decimals)} ${change?.asset.symbol}`;
       return {
         inAssetValueDisplay,
         inAssetNativeDisplay: change?.asset.price?.value
           ? convertAmountAndPriceToNativeDisplay(
-              convertRawAmountToDecimalFormat(change?.value?.toString() || '0', change?.asset.decimals || 18),
+              convertRawAmountToDecimalFormat(change?.value?.toString() || '0', decimals),
               change?.asset.price?.value || '0',
               nativeCurrency
             )?.display
@@ -323,12 +321,13 @@ export default function TransactionMasthead({ transaction }: { transaction: Rain
     // NOTE: For pending transactions let's use the change value
     // since the balance hasn't been updated yet.
     if (isPendingSwap) {
-      const inAssetValueDisplay = `${handleSignificantDecimals(convertRawAmountToDecimalFormat(change?.value?.toString() || '0', change?.asset.decimals || 18), change?.asset.decimals || 18)} ${change?.asset.symbol}`;
+      const decimals = typeof change?.asset.decimals === 'number' ? change?.asset.decimals : 18;
+      const inAssetValueDisplay = `${handleSignificantDecimals(convertRawAmountToDecimalFormat(change?.value?.toString() || '0', decimals), decimals)} ${change?.asset.symbol}`;
       return {
         inAssetValueDisplay,
         inAssetNativeDisplay: change?.asset.price?.value
           ? convertAmountAndPriceToNativeDisplay(
-              convertRawAmountToDecimalFormat(change?.value?.toString() || '0', change?.asset.decimals || 18),
+              convertRawAmountToDecimalFormat(change?.value?.toString() || '0', decimals),
               change?.asset.price?.value || '0',
               nativeCurrency
             )?.display

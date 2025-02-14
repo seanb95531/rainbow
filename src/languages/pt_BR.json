@@ -16,6 +16,7 @@
       "tab_balances": "Saldos",
       "tab_balances_empty_state": "Saldo",
       "tab_balances_tooltip": "Saldos de Ethereum e Token",
+      "tab_claimables": "Reivindicáveis",
       "tab_collectibles": "Colecionáveis",
       "tab_interactions": "Interações",
       "tab_interactions_tooltip": "Interações de Contrato Inteligente",
@@ -24,6 +25,7 @@
       "tab_showcase": "Vitrine",
       "tab_points": "Pontos",
       "tab_positions": "Posições",
+      "tab_rewards": "Recompensas",
       "tab_transactions": "Transações",
       "tab_transactions_tooltip": "Transações e Transferências de Token",
       "tab_uniquetokens": "Tokens Únicos",
@@ -431,6 +433,39 @@
         "description": "Você também pode pressionar longamente o endereço\nacima para copiá-lo."
       }
     },
+    "check_identifier": {
+      "title": "Autenticação Necessária",
+      "description": "Parece que você pode ter trocado de dispositivo ou reinstalado o Rainbow. Por favor, autentique-se para que possamos validar se seus dados da chave mestra ainda estão em bom estado.",
+      "action": "Autenticar",
+      "dismiss": "Dispensar",
+      "error_alert": {
+        "title": "Erro ao Validar a Chave Mestra",
+        "message": "Encontramos um erro ao validar seus dados da chave mestra. Por favor, tente novamente. Se o problema persistir, entre em contato com o suporte.",
+        "contact_support": "Contactar Suporte",
+        "cancel": "Cancelar"
+      },
+      "failure_alert": {
+        "title": "Dados Inválidos da Chave Mestra",
+        "message": "Não conseguimos verificar a integridade dos seus dados da chave mestra. Por favor, restaure sua carteira e tente novamente. Se o problema persistir, entre em contato com o suporte.",
+        "action": "Continuar"
+      }
+    },
+    "claimables": {
+      "panel": {
+        "calculating_gas_fee": "Calculando a taxa de gás...",
+        "amount_to_claim_on_network": "%{amount} para reivindicar na %{network}",
+        "claim": "Reivindicar",
+        "claiming": "Reivindicando",
+        "claim_in_progress": "Reivindicação em Progresso...",
+        "claimed": "Reivindicado!",
+        "claiming_failed": "Reivindicação falhou",
+        "insufficient_funds": "Fundos insuficientes",
+        "claim_amount": "Reivindicar %{amount}",
+        "done": "Concluído",
+        "try_again": "Tente Novamente",
+        "tokens_on_the_way": "Tokens a caminho!"
+      }
+    },
     "cloud": {
       "backup_success": "Sua carteira foi salva com sucesso!"
     },
@@ -468,7 +503,8 @@
       "clear_image_metadata_cache": "Limpar Cache de Metadados da Imagem",
       "clear_local_storage": "Limpar Armazenamento Local",
       "clear_mmkv_storage": "Limpar Armazenamento MMKV",
-      "connect_to_hardhat": "Conectar ao Hardhat",
+      "connect_to_anvil": "Conectar ao Anvil",
+      "disconnect_to_anvil": "Desconectar do anvil",
       "crash_app_render_error": "Crash no app (erro de renderização)",
       "enable_testnets": "Ativar Testnets",
       "installing_update": "Instalando atualização",
@@ -541,7 +577,8 @@
         "from_divider": "de",
         "to_divider": "para",
         "view_on": "Visualizar em %{blockExplorerName}",
-        "view_on_etherscan": "Visualizar no Etherscan"
+        "view_on_etherscan": "Visualizar no Etherscan",
+        "copy_contract_address": "Copiar Endereço do Contrato"
       },
       "all_networks": "Todas as redes",
       "filter_by_network": "Filtrar por rede",
@@ -577,7 +614,8 @@
       "price_impact": {
         "long_wait": {
           "title": "Tempo de espera prolongado",
-          "description": "Aprox. %{time}"
+          "description": "Aprox. %{time}",
+          "description_prefix": "Aprox."
         },
         "unknown_price": {
           "title": "Valor de mercado desconhecido",
@@ -587,6 +625,7 @@
         "small_market": "Mercado Pequeno",
         "small_market_try_smaller_amount": "Pequeno mercado — tente um valor menor",
         "you_are_losing": "Você está perdendo %{priceImpact}",
+        "you_are_losing_prefix": "Você está perdendo",
         "no_data": "Valor de mercado desconhecido",
         "label": "Possível perda",
         "no_data_subtitle": "Se decidir continuar, certifique-se de que está satisfeito com o valor cotado"
@@ -687,6 +726,7 @@
         "flashbots_protect": "Flashbots Proteger",
         "losing": "Perdendo",
         "on": "Ligado",
+        "off": "Desativado",
         "price_impact": "Impacto no preço",
         "price_row_per_token": "por",
         "slippage_message": "Este é um mercado pequeno, então você está obtendo um preço ruim. Tente uma negociação menor!",
@@ -723,6 +763,16 @@
         "number_of_steps": "%{number} Passos",
         "input_exchange_rate": "1 %{inputSymbol} para %{executionRate} %{outputSymbol}",
         "output_exchange_rate": "1 %{outputSymbol} para %{executionRate} %{inputSymbol}"
+      },
+      "swap_details_v2": {
+        "automatic": "Automático",
+        "degen_mode": "Modo Degen",
+        "degen_mode_description": "Pule a etapa de revisão para trocar mais rápido",
+        "maximum_sold": "Máximo Vendido",
+        "minimum_received": "Valor Mínimo Recebido",
+        "preferred_network": "Rede Preferida",
+        "rainbow_fee": "Taxa Rainbow incluída",
+        "settings": "Configurações"
       },
       "token_index": {
         "get_token": "Obter %{assetSymbol}",
@@ -823,6 +873,10 @@
         "title_plural": "Disponível em %{length} Redes",
         "title_singular": "Disponível em %{network} Rede"
       },
+      "default_network_explainer": {
+        "text": "%{chainName} é uma rede de Camada 2 que funciona sobre o Ethereum, permitindo transações mais baratas e rápidas, ao mesmo tempo em que se beneficia da segurança subjacente do Ethereum.",
+        "title": "O que é %{chainName}?"
+      },
       "arbitrum": {
         "text": "Arbitrum é uma rede de Camada 2 que funciona em cima do Ethereum, possibilitando transações mais baratas e rápidas, ao mesmo tempo em que se beneficia da segurança subjacente do Ethereum.\n\nEle agrupa várias transações juntas em um \"roll up\" antes de enviá-las para ficar permanentemente no Ethereum.",
         "title": "O que é o Arbitrum?"
@@ -883,15 +937,19 @@
       },
       "avalanche": {
         "text": "Avalanche é uma sidechain, uma rede distinta que opera junto com o Ethereum e é compatível com ela.\n\nPermite transações mais baratas e rápidas, mas, ao contrário das redes de Camada 2, o Avalanche possui seus próprios mecanismos de segurança e consenso que diferem do Ethereum.",
-        "title": "O que é Avalanche"
+        "title": "O que é Avalanche?"
       },
       "degen": {
-        "text": "Degen Chain é uma rede de Camada 3 que opera sobre o Arbitrum e o Ethereum, oferecendo transações incrivelmente rápidas e baratas denominadas no token da comunidade Farcaster $degen.",
+        "text": "Degen Chain é uma rede Layer 3 que funciona em cima do Arbitrum e Ethereum.",
         "title": "O que é Degen Chain?"
       },
       "blast": {
         "text": "Blast é uma rede de Camada 2 que opera sobre o Ethereum, permitindo transações mais baratas e rápidas, enquanto ainda se beneficia da segurança subjacente do Ethereum.\n\nTambém agrupa muitas transações juntas em um \"roll up\" antes de enviá-las permanentemente para o Ethereum.",
         "title": "O que é Blast?"
+      },
+      "apechain": {
+        "text": "ApeChain é uma rede Layer 3 que funciona em cima do Arbitrum Orbit e Ethereum.\n\nEla melhora significativamente a utilidade do ApeCoin, promovendo uma economia robusta e dinâmica impulsionada pelo $APE.",
+        "title": "O que é ApeChain?"
       },
       "zora": {
         "text": "Zora é uma rede de Camada 2 que roda em cima do Ethereum, permitindo transações mais baratas e rápidas enquanto ainda se beneficia da segurança subjacente do Ethereum.\n\nEle agrupa muitas transações juntas em um \"roll up\" antes de enviá-las permanentemente para o Ethereum.",
@@ -1030,14 +1088,17 @@
         "urgent": "Urgente",
         "custom": "Personalizado"
       },
-      "network_fee": "Taxa estimada da rede",
+      "unable_to_determine_selected_gas": "Incapaz de determinar o gás selecionado",
+      "network_fee": "Est. Taxa de Rede",
       "current_base_fee": "Taxa de base atual",
       "max_base_fee": "Taxa base máxima",
       "miner_tip": "Gorjeta para o minerador",
+      "gas_price": "Preço do Gás",
       "max_transaction_fee": "Taxa máxima da transação",
       "warning_separator": "·",
       "lower_than_suggested": "Baixa · pode ficar preso",
       "higher_than_suggested": "Alta · pagando demais",
+      "likely_to_fail": "Baixa · provavelmente falhará",
       "max_base_fee_too_low_error": "Baixa · provavelmente falhará",
       "tip_too_low_error": "Baixa · provavelmente falhará",
       "alert_message_higher_miner_tip_needed": "É recomendado definir uma dica de minerador maior para evitar problemas.",
@@ -1286,10 +1347,20 @@
     "nfts": {
       "selling": "Vendendo",
       "sort": {
+        "ABC": "Abc",
         "abc": "Abc",
+        "MOST_RECENT": "Recente",
         "most_recent": "Mais Recente",
-        "floor_price": "Preço do Piso"
-      }
+        "FLOOR_PRICE": "Preço do Piso",
+        "floor_price": "Preço do Piso",
+        "order": {
+          "asc": "Ordem crescente",
+          "desc": "Ordem decrescente"
+        }
+      },
+      "empty": "Colecionáveis",
+      "collect_now": "Colecione Agora",
+      "will_appear_here": "Suas Colecionáveis Aparecerão Aqui"
     },
     "nft_offers": {
       "card": {
@@ -1357,13 +1428,16 @@
       },
       "claim": {
         "title": "Resgate seus pontos",
+        "title_rewards_line_1": "Bem-vindo a",
+        "title_rewards_line_2": "Recompensas Rainbow",
         "subtitle": "Pontos estão aqui. Descubra quantos você recebeu.",
+        "subtitle_rewards": "Seja recompensado por usar o Rainbow. Faça coisas onchain, ganhe pontos, ganhe ETH.",
         "get_started": "Comece Agora",
         "use_referral_code": "Utilize o Código de Indicação"
       },
       "referral": {
         "title": "Insira seu código de indicação",
-        "subtitle": "Insira um código de indicação abaixo para resgatar sua recompensa bônus.",
+        "subtitle": "Insira um código de indicação abaixo para reivindicar seu bônus de pontos.",
         "back": "Voltar",
         "error": "Algo deu errado. Por favor, reinicie o aplicativo e tente novamente.",
         "get_started": "Comece Agora",
@@ -1378,6 +1452,7 @@
         "share_link": "Compartilhar Link",
         "next_drop": "Próxima Disponibilização",
         "your_rank": "Sua Classificação",
+        "no_change": "Sem Alterações",
         "of_x": "De %{totalUsers}",
         "referrals": "Indicações",
         "streak": "Sequência",
@@ -1395,12 +1470,40 @@
         "today": "Hoje",
         "error": "Ops!\nPor favor, puxe para atualizar.",
         "points": "pontos",
+        "points_capitalized": "Pontos",
         "referral_code_copied": "Código de referência copiado",
         "earn_points_for_referring": "Ganhe pontos quando seus indicados trocarem $100 através da Rainbow, além de ganhar 10% dos pontos que seus indicados acumularem",
         "already_claimed_points": "Desculpe! Você já resgatou seus pontos.",
         "now": "Agora",
         "unranked": "Sem Classificação",
-        "points_to_rank": "750 pontos para classificar"
+        "points_to_rank": "750 pontos para classificar",
+        "ranking": "Colocado em #%{rank}",
+        "available_to_claim": "Disponível para Reivindicação",
+        "claim": "Reivindicar %{value}",
+        "choose_claim_network": "Escolha a Rede para Reivindicação",
+        "claim_on_network": "Reivindicar na %{network}",
+        "claimed_on_network": "Reivindicado na %{network}",
+        "claiming_on_network": "Reivindicando na %{network}",
+        "error_claiming": "Reivindicação falhou",
+        "free_to_claim": "Livre para Reivindicar",
+        "has_bridge_fee": "Tem Taxa de Ponte",
+        "claim_rewards": "Reivindicar Recompensas",
+        "earned_last_week": "Ganho na Última Semana",
+        "top_10_earner": "Top 10 Ganhadores",
+        "zero_points": "0 Pontos",
+        "no_weekly_rank": "Sem Classificação Semanal",
+        "none": "Nenhum",
+        "my_earnings": "Meus Ganhos",
+        "claimed_earnings": "Ganhos Reivindicados",
+        "current_value": "Valor atual",
+        "rainbow_users_have_earned": "Os usuários do Rainbow ganharam",
+        "earn_eth_rewards": "Ganhar Recompensas em ETH",
+        "rewards_explainer": "Toda semana, os maiores ganhadores de pontos semanais receberão uma parte da receita onchain do Rainbow. Colete pontos trocando ou transacionando no Rainbow, usando dapps ou indicando amigos.",
+        "my_points": "Meus Pontos",
+        "refer_friends": "Indicar Amigos",
+        "try_again": "Tente Novamente",
+        "bridge_error": "Sucesso Parcial",
+        "bridge_error_explainer": "Suas recompensas foram reivindicadas com sucesso na Optimism, mas a transferência para %{network} falhou. Se desejar, você pode transferir suas recompensas manualmente usando o recurso Swap."
       },
       "console": {
         "claim_bonus_paragraph": "Você receberá 100 pontos adicionais uma vez que trocar pelo menos $100 através do Rainbow",
@@ -1774,10 +1877,17 @@
       }
     },
     "positions": {
+      "lp_range_status": {
+        "full_range": "Alcance Completo",
+        "out_of_range": "Fora do Alcance",
+        "in_range": "Dentro do Alcance"
+      },
       "open_dapp": "Abrir 􀮶",
       "deposits": "Depósitos",
       "borrows": "Empréstimos",
-      "rewards": "Recompensas"
+      "stakes": "Apostado",
+      "rewards": "Recompensas",
+      "pools": "Pools"
     },
     "savings": {
       "deposit": "Depósito",
@@ -1916,9 +2026,33 @@
       "too_many_signup_request": "Muitas solicitações de inscrição, por favor, tente novamente mais tarde"
     },
     "swap": {
+      "actions": {
+        "hold_to_swap": "Segure para Trocar",
+        "hold_to_bridge": "Segure para Transferir",
+        "save": "Salvar",
+        "enter_amount": "Insira um valor",
+        "review": "Revisão",
+        "fetching_prices": "Buscando",
+        "swapping": "Trocando",
+        "select_token": "Selecionar Token",
+        "insufficient_funds": "Fundos insuficientes",
+        "insufficient": "Insuficiente",
+        "quote_error": "Erro na Cotação"
+      },
       "aggregators": {
         "rainbow": "Arco-íris"
       },
+      "bridging": "Conectando",
+      "swapping": "Trocando",
+      "max": "Máx",
+      "select": "Selecionar",
+      "token_to_get": "Token a Receber",
+      "token_to_swap": "Token a Trocar",
+      "no_balance": "Sem Saldo",
+      "find_a_token_to_buy": "Encontrar um token para comprar",
+      "search_your_tokens": "Buscar seus tokens",
+      "error_executing_swap": "Erro ao executar a troca",
+      "flashbots_protection": "Proteção Flashbots",
       "tokens_input": {
         "tokens": "Tokens",
         "sort": "Ordenar",
@@ -1945,6 +2079,7 @@
       },
       "loading": "Carregando...",
       "modal_types": {
+        "bridge": "Ponte",
         "confirm": "Confirmar",
         "deposit": "Depósito",
         "receive": "Receber",
@@ -1976,11 +2111,13 @@
     },
     "token_search": {
       "section_header": {
+        "recent": "Recente",
+        "popular": "Popular no Rainbow",
         "favorites": "Favoritos",
         "bridge": "Ponte",
         "verified": "Verificado",
         "unverified": "Não verificado",
-        "on_other_networks": "Em outras redes"
+        "on_other_networks": "Em Outras Redes"
       }
     },
     "transactions": {
@@ -2018,9 +2155,9 @@
           "failed": "Falha no Envio"
         },
         "receive": {
-          "pending": "",
+          "pending": "Recebendo",
           "confirmed": "Recebido",
-          "failed": ""
+          "failed": "Falha ao Receber"
         },
         "withdraw": {
           "pending": "Sacando",
@@ -2404,7 +2541,7 @@
       "balance_title": "Saldo",
       "buy": "Comprar",
       "change_wallet": {
-        "no_balance": "Sem Saldo",
+        "loading_balance": "Carregando saldo...",
         "balance_eth": "%{balanceEth} ETH",
         "watching": "Observando",
         "ledger": "Ledger"
@@ -2652,6 +2789,8 @@
       }
     },
     "walletconnect": {
+      "connecting": "Conectando",
+      "loading": "Carregando",
       "requests": "Pedidos",
       "wants_to_connect": "deseja conectar-se à sua carteira",
       "wants_to_connect_to_network": "quer se conectar à rede %{network}",
@@ -2745,6 +2884,7 @@
             "unavailable_personal_sign": "Simulação para sinais pessoais ainda não é suportada",
             "unavailable_zora_network": "Simulação em Zora ainda não é suportada",
             "failed_to_simulate": "A simulação falhou, o que sugere que sua transação provavelmente falhará. Isso pode ser um problema com o aplicativo que está usando.",
+            "tx_api_error": "Não conseguimos determinar se sua transação será bem-sucedida ou falhará. Proceda com cautela.",
             "warning": "Nenhum comportamento malicioso conhecido foi detectado, mas esta transação possui características que podem representar um risco para a sua carteira.",
             "malicious": "Assinar esta transação pode resultar na perda de acesso a tudo em sua carteira."
           },
@@ -2849,6 +2989,8 @@
         "forward": "Avançar",
         "back": "Voltar"
       }
-    }
+    },
+    "copy": "Copiar",
+    "paste": "Colar"
   }
 }

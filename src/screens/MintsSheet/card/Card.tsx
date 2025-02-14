@@ -3,18 +3,15 @@ import React, { useEffect, useState } from 'react';
 import { getTimeElapsedFromDate } from '../utils';
 import { Bleed, Box, Cover, Inline, Inset, Stack, Text, useForegroundColor } from '@/design-system';
 import { abbreviateNumber, convertRawAmountToRoundedDecimal } from '@/helpers/utilities';
-import { getNetworkObj } from '@/networks';
-import { getNetworkFromChainId } from '@/utils/ethereumUtils';
 import { ButtonPressAnimation } from '@/components/animations';
 import { Placeholder, RecentMintCell } from './RecentMintCell';
 import { View } from 'react-native';
 import { useTheme } from '@/theme';
 import { analyticsV2 } from '@/analytics';
 import * as i18n from '@/languages';
-import ChainBadge from '@/components/coin-icon/ChainBadge';
-import { Network } from '@/helpers';
+import { ChainImage } from '@/components/coin-icon/ChainImage';
 import { navigateToMintCollection } from '@/resources/reservoir/mints';
-import { EthCoinIcon } from '@/components/coin-icon/EthCoinIcon';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 export const NUM_NFTS = 3;
 
@@ -29,10 +26,8 @@ export function Card({ collection }: { collection: MintableCollection }) {
   const separatorTertiary = useForegroundColor('separatorTertiary');
 
   const price = convertRawAmountToRoundedDecimal(collection.mintStatus.price, 18, 6);
-  const currencySymbol = getNetworkObj(getNetworkFromChainId(collection.chainId)).nativeCurrency.symbol;
+  const currencySymbol = useBackendNetworksStore.getState().getChainsNativeAsset()[collection.chainId].symbol;
   const isFree = !price;
-
-  const network = getNetworkFromChainId(collection.chainId);
 
   // update elapsed time every minute if it's less than an hour
   useEffect(() => {
@@ -56,11 +51,7 @@ export function Card({ collection }: { collection: MintableCollection }) {
             </Inset>
             <Cover alignVertical="top" alignHorizontal="right">
               <Bleed vertical="3px">
-                {network !== Network.mainnet ? (
-                  <ChainBadge network={network} position="relative" size="medium" />
-                ) : (
-                  <EthCoinIcon size={20} />
-                )}
+                <ChainImage chainId={collection.chainId} position="relative" size={20} />
               </Bleed>
             </Cover>
           </Box>
@@ -106,7 +97,7 @@ export function Card({ collection }: { collection: MintableCollection }) {
               chainId: collection.chainId,
               priceInEth: price,
             });
-            navigateToMintCollection(collection.contract, collection.mintStatus.price, network);
+            navigateToMintCollection(collection.contract, collection.mintStatus.price, collection.chainId);
           }}
           style={{
             borderRadius: 99,

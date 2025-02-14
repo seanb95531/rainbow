@@ -185,21 +185,6 @@ const getColorsByTheme = (darkMode?: boolean) => {
     },
   };
 
-  let networkColors = {
-    arbitrum: '#2D374B',
-    base: '#0052FF',
-    goerli: '#f6c343',
-    gnosis: '#479E9C',
-    mainnet: '#25292E',
-    optimism: '#FF4040',
-    polygon: '#8247E5',
-    bsc: '#F0B90B',
-    zora: '#2B5DF0',
-    avalanche: '#E84142',
-    degen: '#A36EFD',
-    blast: '#25292E',
-  };
-
   let gradients = {
     appleBlueTintToAppleBlue: ['#15B1FE', base.appleBlue],
     blueToGreen: ['#4764F7', '#23D67F'],
@@ -326,21 +311,6 @@ const getColorsByTheme = (darkMode?: boolean) => {
       secondGradient: '#12131A80',
       thirdGradient: '#12131Aff',
     };
-
-    networkColors = {
-      arbitrum: '#ADBFE3',
-      base: '#3979FF',
-      goerli: '#f6c343',
-      gnosis: '#479E9C',
-      mainnet: '#E0E8FF',
-      optimism: '#FF6A6A',
-      polygon: '#A275EE',
-      bsc: '#F0B90B',
-      zora: '#6183F0',
-      avalanche: '#FF5D5E',
-      degen: '#A36EFD',
-      blast: '#FCFC03',
-    };
   }
 
   return {
@@ -355,7 +325,6 @@ const getColorsByTheme = (darkMode?: boolean) => {
     isColorDark,
     isColorLight,
     listHeaders,
-    networkColors,
     sendScreen,
     ...base,
     ...transparent,

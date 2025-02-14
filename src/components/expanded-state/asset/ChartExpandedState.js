@@ -15,8 +15,8 @@ import { Chart } from '../../value-chart';
 import ExpandedStateSection from '../ExpandedStateSection';
 import SocialLinks from './SocialLinks';
 import { ChartPathProvider } from '@/react-native-animated-charts/src';
-import { isL2Network, isTestnetNetwork } from '@/handlers/web3';
-import AssetInputTypes from '@/helpers/assetInputTypes';
+import { isL2Chain, isTestnetChain } from '@/handlers/web3';
+import { SwapAssetType } from '@/__swaps__/types/swap';
 import {
   useAccountSettings,
   useAdditionalAssetData,
@@ -33,15 +33,18 @@ import { safeAreaInsetValues } from '@/utils';
 import AvailableNetworksv2 from '@/components/expanded-state/AvailableNetworksv2';
 import AvailableNetworksv1 from '@/components/expanded-state/AvailableNetworks';
 import { Box } from '@/design-system';
-import { getNetworkObj } from '@/networks';
 import { useExternalToken } from '@/resources/assets/externalAssetsQuery';
 import { bigNumberFormat } from '@/helpers/bigNumberFormat';
 import { greaterThanOrEqualTo } from '@/helpers/utilities';
-import { Network } from '@/networks/types';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useTimeoutEffect } from '@/hooks/useTimeout';
+import { analyticsV2 } from '@/analytics';
+import { IS_ANDROID, IS_IOS } from '@/env';
 
 const defaultCarouselHeight = 60;
-const baseHeight = 386 + (android && 20 - getSoftMenuBarHeight()) - defaultCarouselHeight;
-const heightWithoutChart = baseHeight + (android && 30);
+const baseHeight = 386 + (IS_ANDROID && 20 - getSoftMenuBarHeight()) - defaultCarouselHeight;
+const heightWithoutChart = baseHeight + (IS_ANDROID && 30);
 const heightWithChart = baseHeight + 292;
 
 const Carousel = styled.ScrollView.attrs({
@@ -140,11 +143,11 @@ function Description({ text = '' }) {
 }
 
 export default function ChartExpandedState({ asset }) {
-  const { nativeCurrency, network: currentNetwork } = useAccountSettings();
+  const { nativeCurrency, chainId: currentChainId } = useAccountSettings();
 
   const { data: genericAsset } = useExternalToken({
     address: asset?.address,
-    network: asset?.network,
+    chainId: asset?.chainId,
     currency: nativeCurrency,
   });
   const {
@@ -163,19 +166,21 @@ export default function ChartExpandedState({ asset }) {
       : genericAsset
         ? {
             ...genericAsset,
+            chainId: asset.chainId,
             network: asset.network,
             address: asset.address,
-            mainnetAddress: asset?.networks?.[getNetworkObj(Network.mainnet)]?.address,
+            mainnetAddress: asset?.networks?.[ChainId.mainnet]?.address,
           }
         : asset;
   }, [asset, genericAsset, hasBalance]);
 
-  const isL2 = useMemo(() => isL2Network(assetWithPrice.network), [assetWithPrice.network]);
-  const isTestnet = isTestnetNetwork(currentNetwork);
+  const isL2 = useMemo(() => isL2Chain({ chainId: asset?.chainId }), [asset?.chainId]);
+  const isTestnet = isTestnetChain({ chainId: currentChainId });
+  const isTransferable = asset?.transferable ?? genericAsset?.transferable ?? true;
 
   const { data, isLoading: additionalAssetDataLoading } = useAdditionalAssetData({
     address: asset?.address,
-    network: asset?.network,
+    chainId: asset?.chainId,
     currency: nativeCurrency,
   });
 
@@ -183,24 +188,15 @@ export default function ChartExpandedState({ asset }) {
 
   const delayedDescriptions = useDelayedValueWithLayoutAnimation(data?.description?.replace(/\s+/g, ''));
 
-  const scrollableContentHeight = true;
   const { chart, chartType, color, fetchingCharts, updateChartType, initialChartDataLabels, showChart, throttledData } =
     useChartThrottledPoints({
       asset: assetWithPrice,
       heightWithChart: Math.min(
-        carouselHeight +
-          heightWithChart -
-          (!hasBalance && 68) +
-          additionalContentHeight +
-          (additionalContentHeight === 0 ? 0 : scrollableContentHeight),
+        carouselHeight + heightWithChart - (!hasBalance && 68) + additionalContentHeight + (additionalContentHeight === 0 ? 0 : true),
         screenHeight
       ),
       heightWithoutChart: Math.min(
-        carouselHeight +
-          heightWithoutChart -
-          (!hasBalance && 68) +
-          additionalContentHeight +
-          (additionalContentHeight === 0 ? 0 : scrollableContentHeight),
+        carouselHeight + heightWithoutChart - (!hasBalance && 68) + additionalContentHeight + (additionalContentHeight === 0 ? 0 : true),
         screenHeight
       ),
       shortHeightWithChart: Math.min(carouselHeight + heightWithChart - (!hasBalance && 68), screenHeight),
@@ -215,9 +211,9 @@ export default function ChartExpandedState({ asset }) {
     duration.current = 300;
   }
 
-  let ChartExpandedStateSheetHeight = ios || showChart ? heightWithChart : heightWithoutChart;
+  let ChartExpandedStateSheetHeight = IS_IOS || showChart ? heightWithChart : heightWithoutChart;
 
-  if (android && !hasBalance) {
+  if (IS_ANDROID && !hasBalance) {
     ChartExpandedStateSheetHeight -= 60;
   }
 
@@ -225,21 +221,23 @@ export default function ChartExpandedState({ asset }) {
 
   const handleL2DisclaimerPress = useCallback(() => {
     navigate(Routes.EXPLAIN_SHEET, {
-      type: assetWithPrice.network,
+      type: 'network',
+      chainId: assetWithPrice.chainId,
     });
-  }, [assetWithPrice.network, navigate]);
+  }, [assetWithPrice.chainId, navigate]);
 
   const { layout } = useContext(ModalContext) || {};
 
   const { colors } = useTheme();
 
   const crosschainEnabled = useExperimentalFlag(CROSSCHAIN_SWAPS);
+
   const AvailableNetworks = !crosschainEnabled ? AvailableNetworksv1 : AvailableNetworksv2;
 
-  const assetNetwork = assetWithPrice.network;
+  const assetChainId = assetWithPrice.chainId;
 
   const { swagg_enabled, f2c_enabled } = useRemoteConfig();
-  const swapEnabled = swagg_enabled && getNetworkObj(assetNetwork).features.swaps;
+  const swapEnabled = swagg_enabled && useBackendNetworksStore.getState().getSwapSupportedChainIds().includes(assetChainId);
   const addCashEnabled = f2c_enabled;
 
   const format = useCallback(
@@ -251,12 +249,24 @@ export default function ChartExpandedState({ asset }) {
     [nativeCurrency]
   );
 
+  useTimeoutEffect(
+    ({ elapsedTime }) => {
+      const { address, chainId, symbol, name, icon_url, price } = assetWithPrice;
+      analyticsV2.track(analyticsV2.event.tokenDetailsErc20, {
+        eventSentAfterMs: elapsedTime,
+        token: { address, chainId, symbol, name, icon_url, price },
+        available_data: { chart: showChart, description: !!data?.description, iconUrl: !!icon_url },
+      });
+    },
+    { timeout: 5 * 1000 }
+  );
+
   return (
     <SlackSheet
-      additionalTopPadding={android}
+      additionalTopPadding={IS_ANDROID}
       contentHeight={ChartExpandedStateSheetHeight}
       scrollEnabled
-      {...(ios ? { height: '100%' } : { additionalTopPadding: true, contentHeight: screenHeight - 80 })}
+      {...(IS_IOS ? { height: '100%' } : { additionalTopPadding: true, contentHeight: screenHeight - 80 })}
     >
       <ChartPathProvider data={throttledData}>
         <Chart
@@ -288,16 +298,18 @@ export default function ChartExpandedState({ asset }) {
       {!needsEth ? (
         <SheetActionButtonRow paddingBottom={isL2 ? 19 : undefined}>
           {hasBalance && !isTestnet && swapEnabled && (
-            <SwapActionButton asset={assetWithPrice} color={color} inputType={AssetInputTypes.in} />
+            <SwapActionButton asset={assetWithPrice} color={color} inputType={SwapAssetType.inputAsset} />
           )}
           {hasBalance ? (
-            <SendActionButton asset={assetWithPrice} color={color} fromDiscover={fromDiscover} />
+            isTransferable ? (
+              <SendActionButton asset={assetWithPrice} color={color} fromDiscover={fromDiscover} />
+            ) : null
           ) : swapEnabled ? (
             <SwapActionButton
               asset={assetWithPrice}
               color={color}
               fromDiscover={fromDiscover}
-              inputType={AssetInputTypes.out}
+              inputType={SwapAssetType.outputAsset}
               label={`􀖅 ${lang.t('expanded_state.asset.get_asset', {
                 assetSymbol: asset?.symbol,
               })}`}
@@ -309,11 +321,11 @@ export default function ChartExpandedState({ asset }) {
         </SheetActionButtonRow>
       ) : addCashEnabled ? (
         <SheetActionButtonRow paddingBottom={isL2 ? 19 : undefined}>
-          <BuyActionButton color={color} asset={assetWithPrice} />
+          <BuyActionButton color={color} />
         </SheetActionButtonRow>
       ) : null}
       {!data?.networks && isL2 && (
-        <L2Disclaimer network={assetWithPrice.network} colors={colors} onPress={handleL2DisclaimerPress} symbol={assetWithPrice.symbol} />
+        <L2Disclaimer chainId={assetChainId} colors={colors} onPress={handleL2DisclaimerPress} symbol={assetWithPrice.symbol} />
       )}
       {data?.networks && !hasBalance && (
         <Box paddingBottom={{ custom: 27 }}>
@@ -374,7 +386,7 @@ export default function ChartExpandedState({ asset }) {
           isNativeAsset={assetWithPrice?.isNativeAsset}
           links={data?.links}
           marginTop={!delayedDescriptions && 19}
-          type={asset?.network}
+          chainId={asset?.chainId}
         />
         <Spacer />
       </AdditionalContentWrapper>

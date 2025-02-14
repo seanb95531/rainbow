@@ -2,7 +2,7 @@
 import React, { useCallback, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as i18n from '@/languages';
-import { PanGestureHandler, TapGestureHandler, TapGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import { PanGestureHandler, State, TapGestureHandler, TapGestureHandlerGestureEvent } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
   interpolateColor,
@@ -18,11 +18,11 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { triggerHaptics } from 'react-native-turbo-haptics';
 import { SPRING_CONFIGS, TIMING_CONFIGS } from '@/components/animations/animationConfigs';
 import { AnimatedText, Bleed, Box, Column, Columns, Inline, globalColors, useColorMode, useForegroundColor } from '@/design-system';
 import { IS_IOS } from '@/env';
-import { triggerHapticFeedback } from '@/screens/points/constants';
-import { equalWorklet, greaterThanWorklet } from '@/__swaps__/safe-math/SafeMath';
+import { greaterThanWorklet } from '@/safe-math/SafeMath';
 import {
   SCRUBBER_WIDTH,
   SLIDER_COLLAPSED_HEIGHT,
@@ -90,18 +90,18 @@ export const SwapSlider = ({
   const colors = useDerivedValue(() => ({
     inactiveColorLeft: opacityWorklet(
       dualColor
-        ? getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode, true)
-        : getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode, true),
+        ? getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode)
+        : getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode),
       0.9
     ),
     activeColorLeft: dualColor
-      ? getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode, true)
-      : getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode, true),
+      ? getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode)
+      : getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode),
     inactiveColorRight: dualColor
-      ? opacityWorklet(getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode, true), 0.9)
+      ? opacityWorklet(getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode), 0.9)
       : separatorSecondary,
     activeColorRight: dualColor
-      ? getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode, true)
+      ? getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode)
       : fillSecondary,
   }));
 
@@ -124,10 +124,10 @@ export const SwapSlider = ({
     (current, previous) => {
       if (current !== previous && SwapInputController.inputMethod.value === 'slider') {
         if (current.x >= width * 0.995 && previous?.x && previous?.x < width * 0.995) {
-          runOnJS(triggerHapticFeedback)('impactMedium');
+          triggerHaptics('impactMedium');
         }
         if (current.x < width * 0.005 && previous?.x && previous?.x >= width * 0.005) {
-          runOnJS(triggerHapticFeedback)('impactLight');
+          triggerHaptics('impactLight');
         }
       }
     },
@@ -160,7 +160,7 @@ export const SwapSlider = ({
           ctx.exceedsMax = true;
           isQuoteStale.value = 1;
           sliderXPosition.value = width * 0.999;
-          runOnJS(triggerHapticFeedback)('impactMedium');
+          triggerHaptics('impactMedium');
         }
       }
 
@@ -204,21 +204,27 @@ export const SwapSlider = ({
         overshoot.value = calculateOvershoot(overshootX, maxOverscroll);
       }
     },
-    onFinish: (event, ctx: { startX: number }) => {
+    onFinish: (event, ctx: { exceedsMax?: boolean; startX: number }) => {
       const onFinished = () => {
         overshoot.value = withSpring(0, SPRING_CONFIGS.sliderConfig);
+
         if (xPercentage.value >= 0.995) {
           if (isQuoteStale.value === 1) {
             runOnJS(onChangeWrapper)(1);
           }
           sliderXPosition.value = withSpring(width, SPRING_CONFIGS.snappySpringConfig);
+        } else if (event.state === State.FAILED) {
+          SwapInputController.quoteFetchingInterval.start();
+          return;
         } else if (xPercentage.value < 0.005) {
           runOnJS(onChangeWrapper)(0);
           sliderXPosition.value = withSpring(0, SPRING_CONFIGS.snappySpringConfig);
           isQuoteStale.value = 0;
           isFetching.value = false;
-        } else {
+        } else if (ctx.startX !== sliderXPosition.value) {
           runOnJS(onChangeWrapper)(xPercentage.value);
+        } else {
+          SwapInputController.quoteFetchingInterval.start();
         }
       };
 
@@ -392,17 +398,21 @@ export const SwapSlider = ({
   });
 
   return (
-    // @ts-expect-error Property 'children' does not exist on type
-    <PanGestureHandler activeOffsetX={[0, 0]} activeOffsetY={[0, 0]} onGestureEvent={onSlide} simultaneousHandlers={[tapRef]}>
+    <PanGestureHandler
+      activeOffsetX={[0, 0]}
+      activeOffsetY={[0, 0]}
+      onGestureEvent={onSlide}
+      simultaneousHandlers={[tapRef]}
+      waitFor={maxButtonRef}
+    >
       <Animated.View style={AnimatedSwapStyles.hideWhileReviewingOrConfiguringGas}>
-        {/* @ts-expect-error Property 'children' does not exist on type */}
-        <TapGestureHandler onGestureEvent={onPressDown} simultaneousHandlers={[maxButtonRef, panRef]}>
+        <TapGestureHandler onGestureEvent={onPressDown} simultaneousHandlers={[maxButtonRef, panRef]} waitFor={maxButtonRef}>
           <Animated.View style={{ gap: 14, paddingBottom: 20, paddingHorizontal: 20 }}>
             <View style={{ zIndex: 10 }}>
               <Columns alignHorizontal="justify" alignVertical="center">
                 <Inline alignVertical="center" space="6px" wrap={false}>
                   <Bleed vertical="4px">
-                    <AnimatedSwapCoinIcon showBadge={false} assetType={'input'} small />
+                    <AnimatedSwapCoinIcon showBadge={false} assetType={'input'} size={16} />
                   </Bleed>
                   <Inline alignVertical="bottom" wrap={false}>
                     <AnimatedText
@@ -420,31 +430,9 @@ export const SwapSlider = ({
                 </Inline>
                 <Column width="content">
                   <GestureHandlerV1Button
-                    onPressWorklet={() => {
-                      'worklet';
-                      SwapInputController.inputMethod.value = 'slider';
-
-                      const currentInputValue = SwapInputController.inputValues.value.inputAmount;
-                      const maxSwappableAmount = internalSelectedInputAsset.value?.maxSwappableAmount;
-
-                      const isAlreadyMax = maxSwappableAmount ? equalWorklet(currentInputValue, maxSwappableAmount) : false;
-                      const exceedsMax = maxSwappableAmount ? greaterThanWorklet(currentInputValue, maxSwappableAmount) : false;
-
-                      if (isAlreadyMax) {
-                        runOnJS(triggerHapticFeedback)('impactMedium');
-                      } else {
-                        SwapInputController.quoteFetchingInterval.stop();
-                        if (exceedsMax) sliderXPosition.value = width * 0.999;
-
-                        sliderXPosition.value = withSpring(width, SPRING_CONFIGS.snappySpringConfig, isFinished => {
-                          if (isFinished) {
-                            runOnJS(onChangeWrapper)(1);
-                          }
-                        });
-                      }
-                    }}
-                    style={{ margin: -12, padding: 12 }}
+                    onPressWorklet={SwapInputController.setValueToMaxSwappableAmount}
                     ref={maxButtonRef}
+                    style={{ margin: -12, padding: 12 }}
                   >
                     <AnimatedText align="center" size="15pt" style={maxTextColor} weight="heavy">
                       {MAX_LABEL}

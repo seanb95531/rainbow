@@ -1,51 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
-import { createQueryKey, queryClient } from '@/react-query';
-import remoteConfig from '@react-native-firebase/remote-config';
-import {
-  ARBITRUM_MAINNET_RPC,
-  DATA_API_KEY,
-  DATA_ENDPOINT,
-  DATA_ORIGIN,
-  ETHEREUM_GOERLI_RPC,
-  ETHEREUM_GOERLI_RPC_DEV,
-  ETHEREUM_MAINNET_RPC,
-  ETHEREUM_MAINNET_RPC_DEV,
-  OPTIMISM_MAINNET_RPC,
-  POLYGON_MAINNET_RPC,
-  BASE_MAINNET_RPC,
-  BASE_MAINNET_RPC_DEV,
-  BSC_MAINNET_RPC,
-  ZORA_MAINNET_RPC,
-  AVALANCHE_MAINNET_RPC,
-  AVALANCHE_MAINNET_RPC_DEV,
-  BLAST_MAINNET_RPC,
-  DEGEN_MAINNET_RPC,
-} from 'react-native-dotenv';
 import { RainbowError, logger } from '@/logger';
-import { getNetwork, saveNetwork } from '@/handlers/localstorage/globalSettings';
-import { web3SetHttpProvider } from '@/handlers/web3';
+import { createQueryKey, queryClient } from '@/react-query';
 import { delay } from '@/utils/delay';
+import remoteConfig from '@react-native-firebase/remote-config';
+import { useQuery } from '@tanstack/react-query';
 
 export interface RainbowConfig extends Record<string, string | boolean | number> {
-  arbitrum_mainnet_rpc: string;
-  bsc_mainnet_rpc: string;
-  data_api_key: string;
-  data_endpoint: string;
-  data_origin: string;
   default_slippage_bips: string;
-  ethereum_goerli_rpc: string;
-  ethereum_mainnet_rpc: string;
+  default_slippage_bips_chainId: string;
   f2c_enabled: boolean;
-  flashbots_enabled: boolean;
   op_nft_network: string;
   op_rewards_enabled: boolean;
-  optimism_mainnet_rpc: string;
-  polygon_mainnet_rpc: string;
-  zora_mainnet_rpc: string;
-  base_mainnet_rpc: string;
-  avalanche_mainnet_rpc: string;
-  degen_mainnet_rpc: string;
-  blast_mainnet_rpc: string;
   swagg_enabled: boolean;
   trace_call_block_number_offset: number;
   profiles_enabled: boolean;
@@ -86,42 +50,54 @@ export interface RainbowConfig extends Record<string, string | boolean | number>
   remote_promo_enabled: boolean;
   points_notifications_toggle: boolean;
   dapp_browser: boolean;
-  swaps_v2: boolean;
   idfa_check_enabled: boolean;
   rewards_enabled: boolean;
+
+  degen_mode: boolean;
+  featured_results: boolean;
+  claimables: boolean;
+  nfts_enabled: boolean;
+
+  trending_tokens_limit: number;
 }
 
 export const DEFAULT_CONFIG: RainbowConfig = {
-  arbitrum_mainnet_rpc: ARBITRUM_MAINNET_RPC,
-  data_api_key: DATA_API_KEY,
-  data_endpoint: DATA_ENDPOINT || 'wss://api-v4.zerion.io',
-  data_origin: DATA_ORIGIN,
   default_slippage_bips: JSON.stringify({
-    arbitrum: 200,
-    mainnet: 100,
-    optimism: 200,
-    polygon: 200,
+    apechain: 500,
+    arbitrum: 500,
+    avalanche: 500,
+    base: 500,
     bsc: 200,
-    base: 200,
-    zora: 200,
-    avalanche: 200,
-    blast: 200,
-    degen: 200,
+    blast: 500,
+    degen: 500,
+    gnosis: 500,
+    gravity: 500,
+    ink: 500,
+    linea: 500,
+    mainnet: 100,
+    optimism: 500,
+    polygon: 200,
+    sanko: 500,
+    scroll: 500,
+    zksync: 500,
+    zora: 500,
   }),
-  ethereum_goerli_rpc: __DEV__ ? ETHEREUM_GOERLI_RPC_DEV : ETHEREUM_GOERLI_RPC,
-  ethereum_mainnet_rpc: __DEV__ ? ETHEREUM_MAINNET_RPC_DEV : ETHEREUM_MAINNET_RPC,
+  default_slippage_bips_chainId: JSON.stringify({
+    '33139': 500,
+    '42161': 500,
+    '43114': 500,
+    '8453': 500,
+    '81457': 500,
+    '56': 200,
+    '666666666': 500,
+    '1': 100,
+    '10': 500,
+    '137': 200,
+    '7777777': 500,
+  }),
   f2c_enabled: true,
-  flashbots_enabled: true,
   op_nft_network: 'op-mainnet',
   op_rewards_enabled: false,
-  optimism_mainnet_rpc: OPTIMISM_MAINNET_RPC,
-  polygon_mainnet_rpc: POLYGON_MAINNET_RPC,
-  bsc_mainnet_rpc: BSC_MAINNET_RPC,
-  zora_mainnet_rpc: ZORA_MAINNET_RPC,
-  base_mainnet_rpc: __DEV__ ? BASE_MAINNET_RPC_DEV : BASE_MAINNET_RPC,
-  avalanche_mainnet_rpc: __DEV__ ? AVALANCHE_MAINNET_RPC_DEV : AVALANCHE_MAINNET_RPC,
-  degen_mainnet_rpc: DEGEN_MAINNET_RPC,
-  blast_mainnet_rpc: BLAST_MAINNET_RPC,
   swagg_enabled: true,
   trace_call_block_number_offset: 20,
   profiles_enabled: true,
@@ -162,27 +138,33 @@ export const DEFAULT_CONFIG: RainbowConfig = {
   points_enabled: true,
   points_fully_enabled: true,
   rpc_proxy_enabled: true,
-  remote_cards_enabled: false,
+  remote_cards_enabled: true,
   remote_promo_enabled: false,
   points_notifications_toggle: true,
   dapp_browser: true,
-  swaps_v2: false,
   idfa_check_enabled: true,
   rewards_enabled: true,
+
+  degen_mode: true,
+  featured_results: true,
+  claimables: true,
+  nfts_enabled: true,
+
+  trending_tokens_limit: 10,
+  trending_tokens_enabled: false,
 };
 
 export async function fetchRemoteConfig(): Promise<RainbowConfig> {
   const config: RainbowConfig = { ...DEFAULT_CONFIG };
   try {
     await remoteConfig().fetchAndActivate();
-    logger.debug('Remote config fetched successfully');
+    logger.debug(`[remoteConfig]: Remote config fetched successfully`);
     const parameters = remoteConfig().getAll();
     Object.entries(parameters).forEach($ => {
       const [key, entry] = $;
-      if (key === 'default_slippage_bips') {
+      if (key === 'default_slippage_bips' || key === 'default_slippage_bips_chainId') {
         config[key] = JSON.parse(entry.asString());
       } else if (
-        key === 'flashbots_enabled' ||
         key === 'f2c_enabled' ||
         key === 'swagg_enabled' ||
         key === 'op_rewards_enabled' ||
@@ -220,26 +202,29 @@ export async function fetchRemoteConfig(): Promise<RainbowConfig> {
         key === 'remote_cards_enabled' ||
         key === 'points_notifications_toggle' ||
         key === 'dapp_browser' ||
-        key === 'swaps_v2' ||
         key === 'idfa_check_enabled' ||
-        key === 'rewards_enabled'
+        key === 'rewards_enabled' ||
+        key === 'degen_mode' ||
+        key === 'featured_results' ||
+        key === 'claimables' ||
+        key === 'nfts_enabled' ||
+        key === 'trending_tokens_enabled'
       ) {
         config[key] = entry.asBoolean();
+      } else if (key === 'trending_tokens_limit') {
+        config[key] = entry.asNumber();
       } else {
         config[key] = entry.asString();
       }
     });
     return config;
   } catch (e) {
-    logger.error(new RainbowError('Failed to fetch remote config'), {
+    logger.error(new RainbowError(`[remoteConfig]: Failed to fetch remote config`), {
       error: e,
     });
     throw e;
   } finally {
-    logger.debug(`Current remote config:\n${JSON.stringify(config, null, 2)}`);
-    const currentNetwork = await getNetwork();
-    web3SetHttpProvider(currentNetwork);
-    saveNetwork(currentNetwork);
+    logger.debug(`[remoteConfig]: Current remote config:\n${JSON.stringify(config, null, 2)}`);
   }
 }
 

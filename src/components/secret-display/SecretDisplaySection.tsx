@@ -1,5 +1,4 @@
 import { RouteProp, useRoute } from '@react-navigation/native';
-import { captureException } from '@sentry/react-native';
 import React, { ReactNode, useCallback, useEffect, useState } from 'react';
 import { createdWithBiometricError, identifyWalletType, loadPrivateKey, loadSeedPhraseAndMigrateIfNeeded } from '@/model/wallet';
 import ActivityIndicator from '../ActivityIndicator';
@@ -25,6 +24,7 @@ import { useNavigation } from '@/navigation';
 import { ImgixImage } from '../images';
 import RoutesWithPlatformDifferences from '@/navigation/routesNames';
 import { Source } from 'react-native-fast-image';
+import { backupsStore } from '@/state/backups/backups';
 
 const MIN_HEIGHT = 740;
 
@@ -63,6 +63,9 @@ export function SecretDisplaySection({ onSecretLoaded, onWalletTypeIdentified }:
   const { colors } = useTheme();
   const { params } = useRoute<RouteProp<SecretDisplaySectionParams, 'SecretDisplaySection'>>();
   const { selectedWallet, wallets } = useWallets();
+  const { backupProvider } = backupsStore(state => ({
+    backupProvider: state.backupProvider,
+  }));
   const { onManuallyBackupWalletId } = useWalletManualBackup();
   const { navigate } = useNavigation();
 
@@ -106,11 +109,10 @@ export function SecretDisplaySection({ onSecretLoaded, onWalletTypeIdentified }:
       onSecretLoaded?.(!!seedPhrase);
     } catch (error) {
       const message = (error as Error)?.message;
-      logger.error(new RainbowError('Error while trying to reveal secret'), {
+      logger.error(new RainbowError('[SecretDisplaySection]: Error while trying to reveal secret'), {
         error: message,
       });
       setSectionState(message === createdWithBiometricError ? SecretDisplayStates.securedWithBiometrics : SecretDisplayStates.noSeed);
-      captureException(error);
       onSecretLoaded?.(false);
     }
   }, [onSecretLoaded, privateKeyAddress, onWalletTypeIdentified, walletId]);
@@ -125,9 +127,12 @@ export function SecretDisplaySection({ onSecretLoaded, onWalletTypeIdentified }:
   const handleConfirmSaved = useCallback(() => {
     if (backupType === WalletBackupTypes.manual) {
       onManuallyBackupWalletId(walletId);
+      if (!backupProvider) {
+        backupsStore.getState().setBackupProvider(WalletBackupTypes.manual);
+      }
       navigate(RoutesWithPlatformDifferences.SETTINGS_SECTION_BACKUP);
     }
-  }, [backupType, walletId, onManuallyBackupWalletId, navigate]);
+  }, [backupType, onManuallyBackupWalletId, walletId, backupProvider, navigate]);
 
   const getIconForBackupType = useCallback(() => {
     if (isBackingUp) {
@@ -221,14 +226,20 @@ export function SecretDisplaySection({ onSecretLoaded, onWalletTypeIdentified }:
           </Inset>
 
           {isBackingUp && (
-            <Box position="absolute" bottom={{ custom: 20 }} alignItems="center" style={{ paddingHorizontal: 24 }}>
+            <Box
+              position="absolute"
+              testID={'saved-these-words'}
+              bottom={{ custom: 20 }}
+              alignItems="center"
+              style={{ paddingHorizontal: 24 }}
+            >
               <SheetActionButton label={btnText} color="blue" weight="bold" onPress={handleConfirmSaved} />
             </Box>
           )}
         </Box>
       );
     default:
-      logger.error(new RainbowError('Secret display section tries to present an unknown state'));
+      logger.error(new RainbowError(`[SecretDisplaySection]: Secret display section state unknown ${sectionState}`));
       return null;
   }
 }

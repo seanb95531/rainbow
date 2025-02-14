@@ -1,5 +1,5 @@
 import lang from 'i18n-js';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Linking } from 'react-native';
 import { ImageOrVideo } from 'react-native-image-crop-picker';
 import { useDispatch } from 'react-redux';
@@ -25,6 +25,7 @@ import { ETH_ADDRESS } from '@/references';
 import { isZero } from '@/helpers/utilities';
 import { IS_IOS } from '@/env';
 import { buildRainbowUrl } from '@/utils/buildRainbowUrl';
+import { MenuConfig } from '@/components/native-context-menu/contextMenu';
 
 type UseOnAvatarPressProps = {
   /** Is the avatar selection being used on the wallet or transaction screen? */
@@ -139,7 +140,7 @@ export default ({ screenType = 'transaction' }: UseOnAvatarPressProps = {}) => {
   const isReadOnly = isReadOnlyWallet && !enableActionsOnReadOnlyWallet;
 
   const isENSProfile = profilesEnabled && profileEnabled && isOwner;
-  const isZeroETH = isZero(accountAsset?.balance?.amount);
+  const isZeroETH = isZero(accountAsset?.balance?.amount || 0);
 
   const callback = useCallback(
     async (buttonIndex: number) => {
@@ -178,7 +179,7 @@ export default ({ screenType = 'transaction' }: UseOnAvatarPressProps = {}) => {
     ]
   );
 
-  const avatarContextMenuConfig = {
+  const avatarContextMenuConfig: MenuConfig = {
     menuTitle: '',
     menuItems: [
       isENSProfile &&
@@ -186,36 +187,24 @@ export default ({ screenType = 'transaction' }: UseOnAvatarPressProps = {}) => {
         !isZeroETH && {
           actionKey: 'editProfile',
           actionTitle: lang.t('profiles.profile_avatar.edit_profile'),
-          icon: {
-            iconType: 'SYSTEM',
-            iconValue: ios ? 'pencil.circle' : null,
-          },
+          ...(ios && { icon: { iconType: 'SYSTEM', iconValue: 'pencil.circle' } }),
         },
       isENSProfile && {
         actionKey: 'viewProfile',
         actionTitle: lang.t('profiles.profile_avatar.view_profile'),
-        icon: {
-          iconType: 'SYSTEM',
-          iconValue: ios ? 'person.crop.circle' : null,
-        },
+        ...(ios && { icon: { iconType: 'SYSTEM', iconValue: 'person.crop.circle' } }),
       },
       !isENSProfile &&
         !isReadOnly &&
         !isZeroETH && {
           actionKey: 'createProfile',
           actionTitle: lang.t('profiles.profile_avatar.create_profile'),
-          icon: {
-            iconType: 'SYSTEM',
-            iconValue: ios ? 'person.crop.circle' : null,
-          },
+          ...(ios && { icon: { iconType: 'SYSTEM', iconValue: 'person.crop.circle' } }),
         },
       {
         actionKey: 'chooseFromLibrary',
         actionTitle: lang.t('profiles.profile_avatar.choose_from_library'),
-        icon: {
-          iconType: 'SYSTEM',
-          iconValue: ios ? 'photo.on.rectangle.angled' : null,
-        },
+        ...(ios && { icon: { iconType: 'SYSTEM', iconValue: 'photo.on.rectangle.angled' } }),
       },
       !accountImage
         ? ios
@@ -235,10 +224,10 @@ export default ({ screenType = 'transaction' }: UseOnAvatarPressProps = {}) => {
             actionKey: 'removePhoto',
             actionTitle: lang.t('profiles.profile_avatar.remove_photo'),
           },
-    ].filter(x => x),
+    ].filter(Boolean),
   };
 
-  const avatarActionSheetOptions = avatarContextMenuConfig.menuItems.map(item => item.actionTitle).concat(ios ? ['Cancel'] : []);
+  const avatarActionSheetOptions = avatarContextMenuConfig.menuItems.map(item => item && item.actionTitle).concat(ios ? ['Cancel'] : []);
 
   const onAvatarPressProfile = useCallback(() => {
     navigate(Routes.PROFILE_SHEET, {

@@ -1,5 +1,6 @@
-import { Network } from '@/helpers';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 import { RainbowFetchClient } from '../rainbow-fetch';
+import { ChainId } from '@/state/backendNetworks/types';
 
 const rainbowMeteorologyApi = new RainbowFetchClient({
   baseURL: 'https://metadata.p.rainbow.me',
@@ -10,4 +11,5 @@ const rainbowMeteorologyApi = new RainbowFetchClient({
   timeout: 30000, // 30 secs
 });
 
-export const rainbowMeteorologyGetData = (network: Network) => rainbowMeteorologyApi.get(`/meteorology/v1/gas/${network}`, {});
+export const rainbowMeteorologyGetData = (chainId: ChainId) =>
+  rainbowMeteorologyApi.get(`/meteorology/v1/gas/${useBackendNetworksStore.getState().getChainsName()[chainId]}`, {});

@@ -1,12 +1,15 @@
 import React, { useLayoutEffect } from 'react';
 import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Emoji } from '../text';
+import { TextSize } from '../text/types';
 
 interface GravityEmojiProps {
   distance: number;
+  duration: number;
   emoji: string;
+  index: number;
   left: number;
-  size: number;
+  size: TextSize;
   top: number;
 }
 
@@ -72,16 +75,12 @@ const GravityEmoji = ({ distance, emoji, left, size, top }: GravityEmojiProps) =
         {
           left,
           position: 'absolute',
-          top: top || size * -0.5,
+          top: top || Number(size) * -0.5,
         },
         animatedStyle,
       ]}
     >
-      <Emoji
-        name={emoji}
-        // @ts-expect-error – JS component
-        size={size}
-      />
+      <Emoji name={emoji} size={size} />
     </Animated.View>
   );
 };

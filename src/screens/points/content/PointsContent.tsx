@@ -57,12 +57,12 @@ import EthIcon from '@/assets/eth-icon.png';
 import { useNavigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import Animated, { runOnUI, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { useNativeAssetForNetwork } from '@/utils/ethereumUtils';
-import { Network } from '@/helpers';
+import { useNativeAsset } from '@/utils/ethereumUtils';
 import { format, intervalToDuration, isToday } from 'date-fns';
 import { useRemoteConfig } from '@/model/remoteConfig';
 import { ETH_REWARDS, useExperimentalFlag } from '@/config';
 import { RewardsActionButton } from '../components/RewardsActionButton';
+import { ChainId } from '@/state/backendNetworks/types';
 
 const InfoCards = ({ points }: { points: GetPointsDataForWalletQuery | undefined }) => {
   const labelSecondary = useForegroundColor('labelSecondary');
@@ -476,9 +476,11 @@ const NextDistributionCountdown = ({ nextDistribution }: { nextDistribution: Dat
   const minuteStr = minutes ? `${minutes}m` : '';
 
   return (
-    <Text align="center" color="labelSecondary" size="17pt" weight="heavy">
-      {`${dayStr} ${hourStr} ${minuteStr}`.trim()}
-    </Text>
+    <TextShadow shadowOpacity={0.24}>
+      <Text align="center" color="labelSecondary" size="17pt" weight="heavy">
+        {`${dayStr} ${hourStr} ${minuteStr}`.trim()}
+      </Text>
+    </TextShadow>
   );
 };
 
@@ -529,9 +531,7 @@ const NextDropCard = memo(function NextDropCard({ nextDistribution }: { nextDist
             overflow: 'hidden',
           }}
         >
-          <TextShadow shadowOpacity={0.24}>
-            <NextDistributionCountdown nextDistribution={nextDistribution} />
-          </TextShadow>
+          <NextDistributionCountdown nextDistribution={nextDistribution} />
         </Box>
       </Box>
     </Card>
@@ -673,7 +673,7 @@ export function PointsContent() {
   const rank = points?.points?.user.stats.position.current;
   const isUnranked = !!points?.points?.user?.stats?.position?.unranked;
 
-  const eth = useNativeAssetForNetwork(Network.mainnet);
+  const eth = useNativeAsset({ chainId: ChainId.mainnet });
   const rewards = points?.points?.user?.rewards;
   const { claimed, claimable } = rewards || {};
   const showClaimYourPoints = claimable && claimable !== '0';
@@ -735,7 +735,7 @@ export function PointsContent() {
             <Box gap={24}>
               {rewardsEnabled && (showClaimYourPoints || showMyEarnings) && (
                 <Box gap={20}>
-                  {showClaimYourPoints && !isReadOnlyWallet && <ClaimCard claim={claimableBalance.display} value={claimablePrice} />}
+                  {showClaimYourPoints && <ClaimCard claim={claimableBalance.display} value={claimablePrice} />}
                   {showMyEarnings && <EarningsCard claimed={claimedBalance.display} value={claimedPrice} />}
                 </Box>
               )}
@@ -747,16 +747,16 @@ export function PointsContent() {
           </Inset>
           {!shouldDisplayError ? (
             <Inset horizontal="20px" top="24px">
-              <Stack space="28px">
-                <Stack space="20px">
+              <Box gap={28}>
+                <Box gap={20}>
                   <Text color="label" size="20pt" style={{ marginLeft: 4 }} weight="heavy">
                     {i18n.t(i18n.l.points.points.my_points)}
                   </Text>
                   <Box flexDirection="row" alignItems="center" paddingLeft="4px">
                     {canDisplayTotalPoints ? <RainbowText totalPointsString={totalPointsString} /> : <Skeleton height={31} width={200} />}
                   </Box>
-                </Stack>
-                <Box gap={24}>
+                </Box>
+                <Box width="full" gap={24}>
                   {!!cardIds.length && !isReadOnlyWallet && <RemoteCardCarousel key="remote-cards" />}
                   <InfoCards points={points} />
                 </Box>
@@ -877,7 +877,7 @@ export function PointsContent() {
                     <Separator color={isDarkMode ? 'separatorSecondary' : 'separatorTertiary'} thickness={1} />
                   </>
                 )}
-                <Stack space="20px">
+                <Box gap={20}>
                   <Inset left="4px">
                     <Text color="label" size="20pt" weight="heavy">
                       {i18n.t(i18n.l.points.points.leaderboard)}
@@ -944,8 +944,8 @@ export function PointsContent() {
                   ) : (
                     <Skeleton height={400} width={deviceWidth - 40} />
                   )}
-                </Stack>
-              </Stack>
+                </Box>
+              </Box>
             </Inset>
           ) : (
             <Box alignItems="center" justifyContent="center" height="full" width="full">

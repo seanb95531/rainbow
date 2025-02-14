@@ -1,15 +1,16 @@
 /* eslint-disable react/jsx-props-no-spreading */
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import React, { useContext } from 'react';
 import { AddCashSheet } from '../screens/AddCash';
 import AvatarBuilder from '../screens/AvatarBuilder';
 import BackupSheet from '../components/backup/BackupSheet';
-import ChangeWalletSheet from '../screens/ChangeWalletSheet';
+import ChangeWalletSheet from '../screens/change-wallet/ChangeWalletSheet';
 import ConnectedDappsSheet from '../screens/ConnectedDappsSheet';
 import ENSAdditionalRecordsSheet from '../screens/ENSAdditionalRecordsSheet';
 import ENSConfirmRegisterSheet from '../screens/ENSConfirmRegisterSheet';
 import ExpandedAssetSheet from '../screens/ExpandedAssetSheet';
+import { ExpandedAssetSheet as ExpandedAssetSheetV2 } from '@/screens/expandedAssetSheet/ExpandedAssetSheet';
 import ExplainSheet from '../screens/ExplainSheet';
 import ExternalLinkWarningSheet from '../screens/ExternalLinkWarningSheet';
 import ModalScreen from '../screens/ModalScreen';
@@ -38,7 +39,6 @@ import {
   hardwareWalletTxNavigatorConfig,
   consoleSheetConfig,
   customGasSheetConfig,
-  dappBrowserControlPanelConfig,
   defaultScreenStackOptions,
   ensAdditionalRecordsSheetConfig,
   ensConfirmRegisterSheetConfig,
@@ -46,10 +46,10 @@ import {
   explainSheetConfig,
   externalLinkWarningSheetConfig,
   mintsSheetConfig,
-  nativeStackDefaultConfig,
   nftOffersSheetConfig,
   nftSingleOfferSheetConfig,
   pairHardwareWalletNavigatorConfig,
+  panelConfig,
   profileConfig,
   profilePreviewConfig,
   qrScannerConfig,
@@ -60,7 +60,6 @@ import {
   settingsSheetConfig,
   signTransactionSheetConfig,
   stackNavigationConfig,
-  swapDetailsSheetConfig,
   learnWebViewScreenConfig,
   transactionDetailsConfig,
   addWalletNavigatorConfig,
@@ -72,14 +71,15 @@ import {
   swapConfig,
   checkIdentifierSheetConfig,
   recieveModalSheetConfig,
+  expandedAssetSheetV2Config,
+  networkSelectorConfig,
 } from './config';
 import { addCashSheet, emojiPreset, emojiPresetWallet, overlayExpandedPreset, sheetPreset } from './effects';
 import { InitialRouteContext } from './initialRoute';
 import { nativeStackConfig } from './nativeStackConfig';
 import { onNavigationStateChange } from './onNavigationStateChange';
 import Routes from './routesNames';
-import { ExchangeModalNavigator } from './index';
-import useExperimentalFlag, { PROFILES, SWAPS_V2 } from '@/config/experimentalHooks';
+import useExperimentalFlag, { PROFILES } from '@/config/experimentalHooks';
 import createNativeStackNavigator from '@/react-native-cool-modals/createNativeStackNavigator';
 import QRScannerScreen from '@/screens/QRScannerScreen';
 import { PairHardwareWalletNavigator } from './PairHardwareWalletNavigator';
@@ -100,10 +100,15 @@ import { ConsoleSheet } from '@/screens/points/ConsoleSheet';
 import { PointsProfileProvider } from '@/screens/points/contexts/PointsProfileContext';
 import AppIconUnlockSheet from '@/screens/AppIconUnlockSheet';
 import { SwapScreen } from '@/__swaps__/screens/Swap/Swap';
-import { useRemoteConfig } from '@/model/remoteConfig';
 import CheckIdentifierScreen from '@/screens/CheckIdentifierScreen';
 import { ControlPanel } from '@/components/DappBrowser/control-panel/ControlPanel';
 import { ClaimRewardsPanel } from '@/screens/points/claim-flow/ClaimRewardsPanel';
+import { ClaimClaimablePanel } from '@/screens/claimables/ClaimPanel';
+import { RootStackParamList } from './types';
+import WalletLoadingListener from '@/components/WalletLoadingListener';
+import { Portal as CMPortal } from '@/react-native-cool-modals/Portal';
+import { LogSheet } from '@/components/debugging/LogSheet';
+import { NetworkSelector } from '@/components/NetworkSwitcher';
 
 const Stack = createStackNavigator();
 const NativeStack = createNativeStackNavigator();
@@ -140,9 +145,7 @@ function MainStack() {
 }
 
 function NativeStackNavigator() {
-  const remoteConfig = useRemoteConfig();
   const profilesEnabled = useExperimentalFlag(PROFILES);
-  const swapsV2Enabled = useExperimentalFlag(SWAPS_V2) || remoteConfig.swaps_v2;
 
   return (
     <NativeStack.Navigator {...nativeStackConfig}>
@@ -150,11 +153,6 @@ function NativeStackNavigator() {
       <NativeStack.Screen component={LearnWebViewScreen} name={Routes.LEARN_WEB_VIEW_SCREEN} {...learnWebViewScreenConfig} />
       <NativeStack.Screen component={ReceiveModal} name={Routes.RECEIVE_MODAL} {...recieveModalSheetConfig} />
       <NativeStack.Screen component={SettingsSheet} name={Routes.SETTINGS_SHEET} {...settingsSheetConfig} />
-      <NativeStack.Screen
-        component={ExchangeModalNavigator}
-        name={Routes.EXCHANGE_MODAL}
-        options={{ ...nativeStackDefaultConfig, relevantScrollViewDepth: 2 }}
-      />
       <NativeStack.Screen component={ExpandedAssetSheet} name={Routes.EXPANDED_ASSET_SHEET} {...expandedAssetSheetConfigWithLimit} />
       <NativeStack.Screen component={PoapSheet} name={Routes.POAP_SHEET} {...expandedAssetSheetConfigWithLimit} />
       <NativeStack.Screen component={MintSheet} name={Routes.MINT_SHEET} {...expandedAssetSheetConfigWithLimit} />
@@ -193,17 +191,7 @@ function NativeStackNavigator() {
         {...externalLinkWarningSheetConfig}
       />
       <NativeStack.Screen component={WalletDiagnosticsSheet} name={Routes.DIAGNOSTICS_SHEET} {...walletDiagnosticsSheetConfig} />
-      <NativeStack.Screen
-        component={ChangeWalletSheet}
-        name={Routes.CHANGE_WALLET_SHEET}
-        options={{
-          allowsDragToDismiss: true,
-          backgroundOpacity: 0.7,
-          customStack: true,
-          springDamping: 1,
-          transitionDuration: 0.25,
-        }}
-      />
+      <NativeStack.Screen component={ChangeWalletSheet} name={Routes.CHANGE_WALLET_SHEET} {...panelConfig} />
       <NativeStack.Screen
         component={ConnectedDappsSheet}
         name={Routes.CONNECTED_DAPPS}
@@ -230,8 +218,6 @@ function NativeStackNavigator() {
       <NativeStack.Screen component={RestoreSheet} name={Routes.RESTORE_SHEET} {...restoreSheetConfig} />
       <NativeStack.Screen component={SignTransactionSheet} name={Routes.CONFIRM_REQUEST} {...signTransactionSheetConfig} />
       <NativeStack.Screen component={ExpandedAssetSheet} name={Routes.CUSTOM_GAS_SHEET} {...customGasSheetConfig} />
-      <NativeStack.Screen component={ExpandedAssetSheet} name={Routes.SWAP_DETAILS_SHEET} {...swapDetailsSheetConfig} />
-      <NativeStack.Screen component={ExpandedAssetSheet} name={Routes.SWAP_SETTINGS_SHEET} {...customGasSheetConfig} />
       <NativeStack.Screen component={QRScannerScreen} name={Routes.QR_SCANNER_SCREEN} {...qrScannerConfig} />
       <NativeStack.Screen
         component={PairHardwareWalletNavigator}
@@ -284,33 +270,28 @@ function NativeStackNavigator() {
       <NativeStack.Screen name={Routes.MINTS_SHEET} component={MintsSheet} {...mintsSheetConfig} />
       <NativeStack.Screen component={ConsoleSheet} name={Routes.CONSOLE_SHEET} {...consoleSheetConfig} />
       <NativeStack.Screen component={AppIconUnlockSheet} name={Routes.APP_ICON_UNLOCK_SHEET} {...appIconUnlockSheetConfig} />
-      <NativeStack.Screen component={ControlPanel} name={Routes.DAPP_BROWSER_CONTROL_PANEL} {...dappBrowserControlPanelConfig} />
-      <NativeStack.Screen component={ClaimRewardsPanel} name={Routes.CLAIM_REWARDS_PANEL} {...dappBrowserControlPanelConfig} />
-
-      {swapsV2Enabled && <NativeStack.Screen component={SwapScreen} name={Routes.SWAP} {...swapConfig} />}
+      <NativeStack.Screen component={NetworkSelector} name={Routes.NETWORK_SELECTOR} {...networkSelectorConfig} />
+      <NativeStack.Screen component={ControlPanel} name={Routes.DAPP_BROWSER_CONTROL_PANEL} {...panelConfig} />
+      <NativeStack.Screen component={ClaimRewardsPanel} name={Routes.CLAIM_REWARDS_PANEL} {...panelConfig} />
+      <NativeStack.Screen component={ClaimClaimablePanel} name={Routes.CLAIM_CLAIMABLE_PANEL} {...panelConfig} />
+      <NativeStack.Screen component={SwapScreen} name={Routes.SWAP} {...swapConfig} />
+      <NativeStack.Screen component={ExpandedAssetSheetV2} name={Routes.EXPANDED_ASSET_SHEET_V2} {...expandedAssetSheetV2Config} />
+      <NativeStack.Screen component={LogSheet} name={Routes.LOG_SHEET} {...panelConfig} />
     </NativeStack.Navigator>
   );
 }
 
-const AppContainerWithAnalytics = React.forwardRef(
-  (
-    props: {
-      onReady: () => void;
-    },
-    ref
-  ) => (
-    <NavigationContainer
-      onReady={props.onReady}
-      onStateChange={onNavigationStateChange}
-      // @ts-ignore
-      ref={ref}
-    >
-      <PointsProfileProvider>
-        <NativeStackNavigator />
-      </PointsProfileProvider>
-    </NavigationContainer>
-  )
-);
+const AppContainerWithAnalytics = React.forwardRef<NavigationContainerRef<RootStackParamList>, { onReady: () => void }>((props, ref) => (
+  <NavigationContainer onReady={props.onReady} onStateChange={onNavigationStateChange} ref={ref}>
+    <PointsProfileProvider>
+      <NativeStackNavigator />
+    </PointsProfileProvider>
+
+    {/* NOTE: Internally, these use some navigational checks */}
+    <CMPortal />
+    <WalletLoadingListener />
+  </NavigationContainer>
+));
 
 AppContainerWithAnalytics.displayName = 'AppContainerWithAnalytics';
 

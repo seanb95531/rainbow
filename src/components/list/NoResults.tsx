@@ -4,7 +4,7 @@ import { neverRerender } from '@/utils';
 import { Inset, Stack, Text } from '@/design-system';
 import { useTheme } from '@/theme';
 import { logger } from '@/logger';
-import { useUserAssetCount } from '@/resources/assets/useUserAssetCount';
+import { useUserAssetsStore } from '@/state/assets/userAssets';
 
 export enum NoResultsType {
   Discover = 'discover',
@@ -14,7 +14,7 @@ export enum NoResultsType {
 
 export const NoResults = ({ onL2, type }: { onL2?: boolean; type: NoResultsType }) => {
   const { colors } = useTheme();
-  const { data: assetCount } = useUserAssetCount();
+  const assetCount = useUserAssetsStore(state => state.userAssets.size);
 
   let title;
   let description;
@@ -41,7 +41,7 @@ export const NoResults = ({ onL2, type }: { onL2?: boolean; type: NoResultsType 
       break;
     default:
       title = lang.t('exchange.no_results.nothing_found');
-      logger.warn('NoResults: unknown type, falling back to default message');
+      logger.warn('[NoResults]: unknown type, falling back to default message');
       break;
   }
 

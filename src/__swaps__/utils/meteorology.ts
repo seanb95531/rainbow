@@ -1,61 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { ChainId } from '@/__swaps__/types/chains';
+import { ChainId } from '@/state/backendNetworks/types';
 import { rainbowMeteorologyGetData } from '@/handlers/gasFees';
 import { abs, lessThan, subtract } from '@/helpers/utilities';
 import { gweiToWei } from '@/parsers';
 import { QueryConfig, QueryFunctionArgs, QueryFunctionResult, createQueryKey, queryClient } from '@/react-query';
-import { useSwapsStore } from '@/state/swaps/swapsStore';
-import { getNetworkFromChainId } from '@/utils/ethereumUtils';
 import { useCallback } from 'react';
-import { MIN_FLASHBOTS_PRIORITY_FEE } from '../screens/Swap/constants';
 import { GasSettings } from '../screens/Swap/hooks/useCustomGas';
 import { getSelectedGasSpeed, useGasSettings } from '../screens/Swap/hooks/useSelectedGas';
 import { GasSpeed } from '../types/gas';
-import { getMinimalTimeUnitStringForMs } from './time';
+import { MeteorologyLegacyResponse, MeteorologyResponse } from '@/entities/gas';
+import { getMinimalTimeUnitStringForMs } from '@/helpers/time';
 
 // Query Types
-
-export type MeteorologyResponse = {
-  data: {
-    baseFeeSuggestion: string;
-    baseFeeTrend: number;
-    blocksToConfirmationByBaseFee: {
-      [baseFee: string]: string;
-    };
-    blocksToConfirmationByPriorityFee: {
-      [priorityFee: string]: string;
-    };
-    confirmationTimeByPriorityFee: {
-      [priorityFee: string]: string;
-    };
-    currentBaseFee: string;
-    maxPriorityFeeSuggestions: {
-      fast: string;
-      normal: string;
-      urgent: string;
-    };
-    secondsPerNewBlock: number;
-    meta: {
-      blockNumber: number;
-      provider: string;
-    };
-  };
-};
-
-export type MeteorologyLegacyResponse = {
-  data: {
-    legacy: {
-      fastGasPrice: string;
-      proposeGasPrice: string;
-      safeGasPrice: string;
-    };
-    meta: {
-      blockNumber: number;
-      provider: string;
-    };
-  };
-};
 
 export type MeteorologyArgs = {
   chainId: ChainId;
@@ -72,8 +29,7 @@ type MeteorologyQueryKey = ReturnType<typeof meteorologyQueryKey>;
 // Query Function
 
 async function meteorologyQueryFunction({ queryKey: [{ chainId }] }: QueryFunctionArgs<typeof meteorologyQueryKey>) {
-  const network = getNetworkFromChainId(chainId);
-  const parsedResponse = await rainbowMeteorologyGetData(network);
+  const parsedResponse = await rainbowMeteorologyGetData(chainId);
   const meteorologyData = parsedResponse.data as MeteorologyResponse | MeteorologyLegacyResponse;
   return meteorologyData;
 }
@@ -95,23 +51,18 @@ export async function fetchMeteorology(
 
 export function useMeteorology<Selected = MeteorologyResult>(
   { chainId }: MeteorologyArgs,
-  {
-    select,
-    enabled,
-    notifyOnChangeProps = ['data'],
-  }: { select?: (data: MeteorologyResult) => Selected; enabled?: boolean; notifyOnChangeProps?: 'data'[] }
+  { select, enabled }: { select?: (data: MeteorologyResult) => Selected; enabled?: boolean }
 ) {
   return useQuery(meteorologyQueryKey({ chainId }), meteorologyQueryFunction, {
     select,
     enabled,
     refetchInterval: 12_000, // 12 seconds
     staleTime: 12_000, // 12 seconds
-    cacheTime: Infinity,
-    notifyOnChangeProps,
+    cacheTime: 36_000, // 36 seconds
   });
 }
 
-function selectGasSuggestions({ data }: MeteorologyResult, flashbots: boolean) {
+function selectGasSuggestions({ data }: MeteorologyResult) {
   if ('legacy' in data) {
     const { fastGasPrice, proposeGasPrice, safeGasPrice } = data.legacy;
     return {
@@ -135,17 +86,17 @@ function selectGasSuggestions({ data }: MeteorologyResult, flashbots: boolean) {
     urgent: {
       isEIP1559: true,
       maxBaseFee: baseFeeSuggestion,
-      maxPriorityFee: flashbots ? MIN_FLASHBOTS_PRIORITY_FEE : maxPriorityFeeSuggestions.urgent,
+      maxPriorityFee: maxPriorityFeeSuggestions.urgent,
     },
     fast: {
       isEIP1559: true,
       maxBaseFee: baseFeeSuggestion,
-      maxPriorityFee: flashbots ? MIN_FLASHBOTS_PRIORITY_FEE : maxPriorityFeeSuggestions.fast,
+      maxPriorityFee: maxPriorityFeeSuggestions.fast,
     },
     normal: {
       isEIP1559: true,
       maxBaseFee: baseFeeSuggestion,
-      maxPriorityFee: flashbots ? MIN_FLASHBOTS_PRIORITY_FEE : maxPriorityFeeSuggestions.normal,
+      maxPriorityFee: maxPriorityFeeSuggestions.normal,
     },
   } as const;
 }
@@ -206,8 +157,8 @@ function findClosestValue(target: string, array: string[]) {
 function selectEstimatedTime({ data }: MeteorologyResult, selectedGas: GasSettings | undefined) {
   if ('legacy' in data) return undefined;
   if (!selectedGas?.isEIP1559) return undefined;
-  const value = findClosestValue(selectedGas.maxPriorityFee, Object.values(data.confirmationTimeByPriorityFee));
-  const [time] = Object.entries(data.confirmationTimeByPriorityFee).find(([, v]) => v === value) || [];
+  const value = findClosestValue(selectedGas.maxPriorityFee, Object.values(data?.confirmationTimeByPriorityFee || {}));
+  const [time] = Object.entries(data?.confirmationTimeByPriorityFee || {}).find(([, v]) => v === value) || [];
   if (!time) return undefined;
   return `${+time >= 3600 ? '> ' : '~'}${getMinimalTimeUnitStringForMs(+time * 1000)}`;
 }
@@ -225,13 +176,11 @@ export function useEstimatedTime({ chainId, speed }: { chainId: ChainId; speed: 
 type GasSuggestions = ReturnType<typeof selectGasSuggestions>;
 export type GasSuggestion = GasSuggestions[keyof GasSuggestions];
 export function useMeteorologySuggestions({ chainId, enabled }: { chainId: ChainId; enabled?: boolean }) {
-  const flashbots = useSwapsStore(s => chainId === ChainId.mainnet && s.flashbots);
   return useMeteorology(
     { chainId },
     {
-      select: useCallback((data: MeteorologyResult) => selectGasSuggestions(data, flashbots), [flashbots]),
+      select: useCallback((data: MeteorologyResult) => selectGasSuggestions(data), []),
       enabled,
-      notifyOnChangeProps: enabled ? ['data'] : [],
     }
   );
 }
@@ -241,24 +190,20 @@ export function useMeteorologySuggestion<Selected = GasSuggestion>({
   speed,
   enabled,
   select = s => s as Selected,
-  notifyOnChangeProps = ['data'],
 }: {
   chainId: ChainId;
   speed: GasSpeed;
   enabled?: boolean;
   select?: (d: GasSuggestion | undefined) => Selected;
-  notifyOnChangeProps?: ['data'] | [];
 }) {
-  const flashbots = useSwapsStore(s => chainId === ChainId.mainnet && s.flashbots);
   return useMeteorology(
     { chainId },
     {
       select: useCallback(
-        (d: MeteorologyResult) => select(speed === GasSpeed.CUSTOM ? undefined : selectGasSuggestions(d, flashbots)[speed]),
-        [select, speed, flashbots]
+        (d: MeteorologyResult) => select(speed === GasSpeed.CUSTOM ? undefined : selectGasSuggestions(d)[speed]),
+        [select, speed]
       ),
       enabled: enabled && speed !== 'custom',
-      notifyOnChangeProps,
     }
   );
 }
@@ -272,9 +217,8 @@ export const useIsChainEIP1559 = (chainId: ChainId) => {
 
 export const getCachedGasSuggestions = (chainId: ChainId) => {
   const data = getMeteorologyCachedData(chainId);
-  const flashbots = chainId === ChainId.mainnet && useSwapsStore.getState().flashbots;
   if (!data) return undefined;
-  return selectGasSuggestions(data, flashbots);
+  return selectGasSuggestions(data);
 };
 
 export const getSelectedSpeedSuggestion = (chainId: ChainId) => {

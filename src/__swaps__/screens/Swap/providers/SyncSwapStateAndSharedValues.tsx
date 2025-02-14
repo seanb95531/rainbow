@@ -1,29 +1,35 @@
+import BigNumber from 'bignumber.js';
 import {
   divWorklet,
   greaterThanWorklet,
+  isNumberStringWorklet,
   lessThanOrEqualToWorklet,
   lessThanWorklet,
   mulWorklet,
   powWorklet,
   subWorklet,
+  sumWorklet,
   toFixedWorklet,
   toScaledIntegerWorklet,
-} from '@/__swaps__/safe-math/SafeMath';
+} from '@/safe-math/SafeMath';
 import { ExtendedAnimatedAssetWithColors } from '@/__swaps__/types/assets';
-import { ChainId } from '@/__swaps__/types/chains';
-import { add } from '@/__swaps__/utils/numbers';
+import { ChainId } from '@/state/backendNetworks/types';
 import { ParsedAddressAsset } from '@/entities';
-import { useUserNativeNetworkAsset } from '@/resources/assets/useUserAsset';
 import { CrosschainQuote, Quote, QuoteError } from '@rainbow-me/swaps';
+import { deepEqualWorklet } from '@/worklets/comparisons';
 import { debounce } from 'lodash';
-import { useEffect } from 'react';
-import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
-import { formatUnits } from 'viem';
+import { useEffect, useMemo, useState } from 'react';
+import { runOnJS, runOnUI, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 import { create } from 'zustand';
-import { calculateGasFee } from '../hooks/useEstimatedGasFee';
+import { GasSettings } from '../hooks/useCustomGas';
 import { useSelectedGas } from '../hooks/useSelectedGas';
 import { useSwapEstimatedGasLimit } from '../hooks/useSwapEstimatedGasLimit';
 import { useSwapContext } from './swap-provider';
+import { useUserAssetsStore } from '@/state/assets/userAssets';
+import { getUniqueId } from '@/utils/ethereumUtils';
+import { useSwapsStore } from '@/state/swaps/swapsStore';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
+import { getSwapsNavigationParams } from '../navigateToSwaps';
 
 const BUFFER_RATIO = 0.5;
 
@@ -62,7 +68,7 @@ export const SyncQuoteSharedValuesToState = () => {
       // needed and was previously resulting in errors in useEstimatedGasFee.
       if (isSwappingMoreThanAvailableBalance) return;
 
-      if (!previous || current !== previous) {
+      if (!deepEqualWorklet(current, previous)) {
         runOnJS(setInternalSyncedSwapStore)({
           assetToBuy: assetToBuy.value,
           assetToSell: assetToSell.value,
@@ -70,18 +76,61 @@ export const SyncQuoteSharedValuesToState = () => {
           quote: current,
         });
       }
-    }
+    },
+    []
   );
 
   return null;
 };
 
-const getHasEnoughFundsForGas = (quote: Quote, gasFee: string, nativeNetworkAsset: ParsedAddressAsset | undefined) => {
-  if (!nativeNetworkAsset) return false;
-  const userBalance = nativeNetworkAsset.balance?.amount || '0';
+const isFeeNaNWorklet = (value: string | undefined) => {
+  'worklet';
 
-  const quoteValue = quote.value?.toString() || '0';
-  const totalNativeSpentInTx = formatUnits(BigInt(add(quoteValue, gasFee)), nativeNetworkAsset.decimals);
+  return isNaN(Number(value)) || typeof value === 'undefined';
+};
+
+export function calculateGasFeeWorklet(gasSettings: GasSettings, gasLimit: string) {
+  'worklet';
+
+  if (gasSettings.isEIP1559) {
+    const maxBaseFee = isFeeNaNWorklet(gasSettings.maxBaseFee) ? '0' : gasSettings.maxBaseFee;
+    const maxPriorityFee = isFeeNaNWorklet(gasSettings.maxPriorityFee) ? '0' : gasSettings.maxPriorityFee;
+    return mulWorklet(gasLimit, sumWorklet(maxBaseFee, maxPriorityFee));
+  }
+
+  const gasPrice = isFeeNaNWorklet(gasSettings.gasPrice) ? '0' : gasSettings.gasPrice;
+  return mulWorklet(gasLimit, gasPrice);
+}
+
+export function formatUnitsWorklet(value: string, decimals: number) {
+  'worklet';
+  let display = value;
+  const negative = display.startsWith('-');
+  if (negative) display = display.slice(1);
+
+  display = display.padStart(decimals, '0');
+
+  // eslint-disable-next-line prefer-const
+  let [integer, fraction] = [display.slice(0, display.length - decimals), display.slice(display.length - decimals)];
+  fraction = fraction.replace(/(0+)$/, '');
+  return `${negative ? '-' : ''}${integer || '0'}${fraction ? `.${fraction}` : ''}`;
+}
+
+const getHasEnoughFundsForGasWorklet = ({
+  gasFee,
+  nativeNetworkAsset,
+  quoteValue,
+}: {
+  gasFee: string;
+  nativeNetworkAsset: ParsedAddressAsset | undefined;
+  quoteValue: string;
+}) => {
+  'worklet';
+  if (!nativeNetworkAsset) return false;
+
+  const userBalance = nativeNetworkAsset.balance?.amount || '0';
+  const safeGasFee = isNumberStringWorklet(gasFee) ? gasFee : '0';
+  const totalNativeSpentInTx = formatUnitsWorklet(sumWorklet(quoteValue, safeGasFee), nativeNetworkAsset.decimals);
 
   return lessThanOrEqualToWorklet(totalNativeSpentInTx, userBalance);
 };
@@ -89,10 +138,23 @@ const getHasEnoughFundsForGas = (quote: Quote, gasFee: string, nativeNetworkAsse
 export function SyncGasStateToSharedValues() {
   const { hasEnoughFundsForGas, internalSelectedInputAsset } = useSwapContext();
 
-  const { assetToSell, chainId = ChainId.mainnet, quote } = useSyncedSwapQuoteStore();
+  const [initialInfo] = useState(() => {
+    const params = getSwapsNavigationParams();
+    return {
+      assetToSell: params.inputAsset,
+      chainId: params.inputAsset?.chainId || useSwapsStore.getState().preferredNetwork || ChainId.mainnet,
+    };
+  });
 
+  const { assetToSell = initialInfo.assetToSell, chainId = initialInfo.chainId, quote } = useSyncedSwapQuoteStore();
   const gasSettings = useSelectedGas(chainId);
-  const { data: userNativeNetworkAsset } = useUserNativeNetworkAsset(chainId);
+
+  const nativeAssets = useBackendNetworksStore(state => state.getChainsNativeAsset());
+  const nativeCurrencyUniqueId = useMemo(() => getUniqueId(nativeAssets[chainId]?.address, chainId), [chainId, nativeAssets]);
+
+  const isLoadingNativeNetworkAsset = useUserAssetsStore(state => state.getStatus().isInitialLoading);
+  const userNativeNetworkAsset = useUserAssetsStore(state => state.getLegacyUserAsset(nativeCurrencyUniqueId));
+
   const { data: estimatedGasLimit } = useSwapEstimatedGasLimit({ chainId, assetToSell, quote });
 
   const gasFeeRange = useSharedValue<[string, string] | null>(null);
@@ -114,42 +176,78 @@ export function SyncGasStateToSharedValues() {
         if (currInputAsset?.isNativeAsset) {
           internalSelectedInputAsset.modify(asset => {
             if (!asset) return asset;
+            const maxSwappableAmount = subWorklet(asset.balance.amount, currBuffer);
             return {
               ...asset,
-              maxSwappableAmount: subWorklet(asset.balance.amount, currBuffer),
+              maxSwappableAmount: lessThanWorklet(maxSwappableAmount, 0) ? '0' : maxSwappableAmount,
             };
           });
         }
       }
-    }
+    },
+    []
   );
 
   useEffect(() => {
-    hasEnoughFundsForGas.value = undefined;
-    if (!gasSettings || !estimatedGasLimit || !quote || 'error' in quote || !userNativeNetworkAsset) return;
+    const safeQuoteValue = quote && !('error' in quote) && quote.value ? new BigNumber(quote.value.toString()).toFixed() : '0';
 
-    const gasFee = calculateGasFee(gasSettings, estimatedGasLimit);
+    runOnUI(() => {
+      hasEnoughFundsForGas.value = undefined;
+      if (!gasSettings || !estimatedGasLimit || !quote || 'error' in quote || isLoadingNativeNetworkAsset) return;
 
-    const nativeGasFee = divWorklet(gasFee, powWorklet(10, userNativeNetworkAsset.decimals));
+      // NOTE: if we don't have a gas price or max base fee or max priority fee, we can't calculate the gas fee
+      if (
+        (gasSettings.isEIP1559 && !(gasSettings.maxBaseFee || gasSettings.maxPriorityFee)) ||
+        (!gasSettings.isEIP1559 && !gasSettings.gasPrice)
+      ) {
+        return;
+      }
 
-    const isEstimateOutsideRange = !!(
-      gasFeeRange.value &&
-      (lessThanWorklet(nativeGasFee, gasFeeRange.value[0]) || greaterThanWorklet(nativeGasFee, gasFeeRange.value[1]))
-    );
+      if (!userNativeNetworkAsset) {
+        hasEnoughFundsForGas.value = false;
+        return;
+      }
 
-    // If the gas fee range hasn't been set or the estimated fee is outside the range, calculate the range based on the gas fee
-    if (nativeGasFee && (!gasFeeRange.value || isEstimateOutsideRange)) {
-      const lowerBound = toFixedWorklet(mulWorklet(nativeGasFee, 1 - BUFFER_RATIO), userNativeNetworkAsset.decimals);
-      const upperBound = toFixedWorklet(mulWorklet(nativeGasFee, 1 + BUFFER_RATIO), userNativeNetworkAsset.decimals);
-      gasFeeRange.value = [lowerBound, upperBound];
-    }
+      const gasFee = calculateGasFeeWorklet(gasSettings, estimatedGasLimit);
+      if (isNaN(Number(gasFee))) {
+        return;
+      }
 
-    hasEnoughFundsForGas.value = getHasEnoughFundsForGas(quote, gasFee, userNativeNetworkAsset);
+      const nativeGasFee = divWorklet(gasFee, powWorklet(10, userNativeNetworkAsset.decimals));
+
+      const isEstimateOutsideRange = !!(
+        gasFeeRange.value &&
+        (lessThanWorklet(nativeGasFee, gasFeeRange.value[0]) || greaterThanWorklet(nativeGasFee, gasFeeRange.value[1]))
+      );
+
+      // If the gas fee range hasn't been set or the estimated fee is outside the range, calculate the range based on the gas fee
+      if (nativeGasFee && (!gasFeeRange.value || isEstimateOutsideRange)) {
+        const lowerBound = toFixedWorklet(mulWorklet(nativeGasFee, 1 - BUFFER_RATIO), userNativeNetworkAsset.decimals);
+        const upperBound = toFixedWorklet(mulWorklet(nativeGasFee, 1 + BUFFER_RATIO), userNativeNetworkAsset.decimals);
+        gasFeeRange.value = [lowerBound, upperBound];
+      }
+
+      hasEnoughFundsForGas.value = getHasEnoughFundsForGasWorklet({
+        gasFee,
+        nativeNetworkAsset: userNativeNetworkAsset,
+        quoteValue: safeQuoteValue,
+      });
+    })();
 
     return () => {
       hasEnoughFundsForGas.value = undefined;
     };
-  }, [estimatedGasLimit, gasFeeRange, gasSettings, hasEnoughFundsForGas, quote, userNativeNetworkAsset]);
+  }, [
+    estimatedGasLimit,
+    gasFeeRange,
+    gasSettings,
+    hasEnoughFundsForGas,
+    internalSelectedInputAsset,
+    quote,
+    userNativeNetworkAsset,
+    isLoadingNativeNetworkAsset,
+    chainId,
+  ]);
 
   return null;
 }

@@ -4,14 +4,14 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withDe
 import { TIMING_CONFIGS } from '@/components/animations/animationConfigs';
 import { AnimatedText, Box, Inline, TextIcon, useColorMode, useForegroundColor } from '@/design-system';
 import { LIGHT_SEPARATOR_COLOR, SEPARATOR_COLOR, THICK_BORDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
-import { opacity, valueBasedDecimalFormatter } from '@/__swaps__/utils/swaps';
+import { valueBasedDecimalFormatter } from '@/__swaps__/utils/decimalFormatter';
+import { opacity } from '@/__swaps__/utils/swaps';
 import { useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
-import { IS_IOS } from '@/env';
 import { AddressZero } from '@ethersproject/constants';
 import { ETH_ADDRESS } from '@/references';
 import { DEVICE_WIDTH } from '@/utils/deviceUtils';
-import { GestureHandlerV1Button } from './GestureHandlerV1Button';
-import { convertAmountToNativeDisplayWorklet } from '@/__swaps__/utils/numbers';
+import { GestureHandlerButton } from './GestureHandlerButton';
+import { convertAmountToNativeDisplayWorklet } from '@/helpers/utilities';
 import { useAccountSettings } from '@/hooks';
 
 export const ExchangeRateBubble = () => {
@@ -73,8 +73,8 @@ export const ExchangeRateBubble = () => {
       const { symbol: inputAssetSymbol, nativePrice: inputAssetPrice, type: inputAssetType } = internalSelectedInputAsset.value;
       const { symbol: outputAssetSymbol, nativePrice: outputAssetPrice, type: outputAssetType } = internalSelectedOutputAsset.value;
 
-      const isInputAssetStablecoin = inputAssetType === 'stablecoin' ?? false;
-      const isOutputAssetStablecoin = outputAssetType === 'stablecoin' ?? false;
+      const isInputAssetStablecoin = inputAssetType === 'stablecoin';
+      const isOutputAssetStablecoin = outputAssetType === 'stablecoin';
 
       const inputAssetEthTransform =
         internalSelectedInputAsset.value?.address === ETH_ADDRESS ? AddressZero : internalSelectedInputAsset.value?.address;
@@ -129,7 +129,8 @@ export const ExchangeRateBubble = () => {
           break;
         }
       }
-    }
+    },
+    []
   );
 
   const bubbleVisibilityWrapper = useAnimatedStyle(() => {
@@ -139,13 +140,15 @@ export const ExchangeRateBubble = () => {
     };
   });
 
+  const pointerEventsStyle = useAnimatedStyle(() => {
+    const shouldDisplay = fromAssetText.value.length > 0 && toAssetText.value.length > 0;
+    return {
+      pointerEvents: shouldDisplay ? 'auto' : 'none',
+    };
+  });
+
   return (
-    <GestureHandlerV1Button
-      buttonPressWrapperStyleIOS={IS_IOS ? styles.buttonPosition : undefined}
-      onPressWorklet={onChangeIndex}
-      scaleTo={0.9}
-      style={IS_IOS ? undefined : styles.buttonPosition}
-    >
+    <GestureHandlerButton onPressWorklet={onChangeIndex} scaleTo={0.9} style={[styles.buttonPosition, pointerEventsStyle]}>
       <Box
         as={Animated.View}
         alignItems="center"
@@ -185,7 +188,7 @@ export const ExchangeRateBubble = () => {
           </Inline>
         </Box>
       </Box>
-    </GestureHandlerV1Button>
+    </GestureHandlerButton>
   );
 };
 

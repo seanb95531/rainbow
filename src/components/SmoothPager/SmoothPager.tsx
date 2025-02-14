@@ -201,7 +201,8 @@ const SmoothPagerComponent = (
           }
         }
       }
-    }
+    },
+    []
   );
 
   const pagerWrapperStyle = useAnimatedStyle(() => {
@@ -264,7 +265,6 @@ const SmoothPagerComponent = (
   });
 
   return (
-    // @ts-expect-error Property 'children' does not exist on type
     <PanGestureHandler
       activeOffsetX={[-5, 5]}
       failOffsetY={[-10, 10]}

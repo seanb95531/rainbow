@@ -1,5 +1,4 @@
 import {
-  Easing,
   SharedValue,
   interpolateColor,
   useAnimatedStyle,
@@ -11,18 +10,11 @@ import {
 } from 'react-native-reanimated';
 import { useColorMode, useForegroundColor } from '@/design-system';
 
-import {
-  ETH_COLOR_DARK,
-  ETH_COLOR_DARK_ACCENT,
-  SLIDER_COLLAPSED_HEIGHT,
-  SLIDER_HEIGHT,
-  caretConfig,
-  pulsingConfig,
-} from '@/__swaps__/screens/Swap/constants';
-import { inputKeys, inputMethods, inputValuesType } from '@/__swaps__/types/swap';
+import { ETH_COLOR_DARK, ETH_COLOR_DARK_ACCENT, pulsingConfig } from '@/__swaps__/screens/Swap/constants';
+import { inputMethods, inputValuesType } from '@/__swaps__/types/swap';
 import { getColorValueForThemeWorklet, opacity } from '@/__swaps__/utils/swaps';
 import { ExtendedAnimatedAssetWithColors } from '@/__swaps__/types/assets';
-import { equalWorklet } from '@/__swaps__/safe-math/SafeMath';
+import { equalWorklet } from '@/safe-math/SafeMath';
 import { SPRING_CONFIGS, TIMING_CONFIGS } from '@/components/animations/animationConfigs';
 
 export function useSwapTextStyles({
@@ -32,10 +24,6 @@ export function useSwapTextStyles({
   internalSelectedOutputAsset,
   isFetching,
   isQuoteStale,
-  focusedInput,
-  inputProgress,
-  outputProgress,
-  sliderPressProgress,
 }: {
   inputMethod: SharedValue<inputMethods>;
   inputValues: SharedValue<inputValuesType>;
@@ -43,10 +31,6 @@ export function useSwapTextStyles({
   internalSelectedOutputAsset: SharedValue<ExtendedAnimatedAssetWithColors | null>;
   isFetching: SharedValue<boolean>;
   isQuoteStale: SharedValue<number>;
-  focusedInput: SharedValue<inputKeys>;
-  inputProgress: SharedValue<number>;
-  outputProgress: SharedValue<number>;
-  sliderPressProgress: SharedValue<number>;
 }) {
   const { isDarkMode } = useColorMode();
 
@@ -76,25 +60,39 @@ export function useSwapTextStyles({
   });
 
   const isInputZero = useDerivedValue(() => {
-    const isZero =
-      !internalSelectedInputAsset.value ||
-      (inputValues.value.inputAmount === 0 && inputMethod.value !== 'slider') ||
-      (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0));
-    return isZero;
+    const isInputAmountZero = inputValues.value.inputAmount === 0;
+    if (!internalSelectedInputAsset.value) return true;
+
+    if (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0)) return true;
+
+    if (inputMethod.value === 'inputNativeValue' && isInputAmountZero) {
+      return inputValues.value.inputNativeValue === 0;
+    }
+
+    return isInputAmountZero;
   });
 
   const isOutputZero = useDerivedValue(() => {
-    const isZero = !internalSelectedOutputAsset.value || equalWorklet(inputValues.value.outputAmount, 0);
-    return isZero;
+    const isOutputAmountZero = inputValues.value.outputAmount === 0;
+
+    if (!internalSelectedOutputAsset.value) return true;
+
+    if (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0)) return true;
+
+    if (inputMethod.value === 'outputNativeValue' && isOutputAmountZero) {
+      return inputValues.value.outputNativeValue === 0;
+    }
+
+    return isOutputAmountZero;
   });
 
   const inputAssetColor = useDerivedValue(() => {
-    const color = getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode, true);
+    const color = getColorValueForThemeWorklet(internalSelectedInputAsset.value?.highContrastColor, isDarkMode);
     return color === ETH_COLOR_DARK ? ETH_COLOR_DARK_ACCENT : color;
   });
 
   const outputAssetColor = useDerivedValue(() => {
-    const color = getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode, true);
+    const color = getColorValueForThemeWorklet(internalSelectedOutputAsset.value?.highContrastColor, isDarkMode);
     return color === ETH_COLOR_DARK ? ETH_COLOR_DARK_ACCENT : color;
   });
 
@@ -164,79 +162,10 @@ export function useSwapTextStyles({
     };
   });
 
-  // TODO: Create a reusable InputCaret component
-  const inputCaretStyle = useAnimatedStyle(() => {
-    const shouldShow =
-      focusedInput.value === 'inputAmount' &&
-      inputProgress.value === 0 &&
-      outputProgress.value === 0 &&
-      (inputMethod.value !== 'slider' ||
-        (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0)) ||
-        (sliderPressProgress.value === SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT && isQuoteStale.value === 0));
-
-    const opacity = shouldShow
-      ? withRepeat(
-          withSequence(
-            withTiming(1, { duration: 0 }),
-            withTiming(1, { duration: 400, easing: Easing.bezier(0.87, 0, 0.13, 1) }),
-            withTiming(0, caretConfig),
-            withTiming(1, caretConfig)
-          ),
-          -1,
-          true
-        )
-      : withTiming(0, caretConfig);
-
-    const isZero =
-      (inputMethod.value !== 'slider' && inputValues.value.inputAmount === 0) ||
-      (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0));
-
-    return {
-      display: shouldShow ? 'flex' : 'none',
-      opacity,
-      position: isZero ? 'absolute' : 'relative',
-    };
-  });
-
-  const outputCaretStyle = useAnimatedStyle(() => {
-    const shouldShow =
-      focusedInput.value === 'outputAmount' &&
-      inputProgress.value === 0 &&
-      outputProgress.value === 0 &&
-      (inputMethod.value !== 'slider' ||
-        (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0)) ||
-        (sliderPressProgress.value === SLIDER_COLLAPSED_HEIGHT / SLIDER_HEIGHT && isQuoteStale.value === 0));
-
-    const opacity = shouldShow
-      ? withRepeat(
-          withSequence(
-            withTiming(1, { duration: 0 }),
-            withTiming(1, { duration: 400, easing: Easing.bezier(0.87, 0, 0.13, 1) }),
-            withTiming(0, caretConfig),
-            withTiming(1, caretConfig)
-          ),
-          -1,
-          true
-        )
-      : withTiming(0, caretConfig);
-
-    const isZero =
-      (inputMethod.value !== 'slider' && inputValues.value.outputAmount === 0) ||
-      (inputMethod.value === 'slider' && equalWorklet(inputValues.value.inputAmount, 0));
-
-    return {
-      display: shouldShow ? 'flex' : 'none',
-      opacity,
-      position: isZero ? 'absolute' : 'relative',
-    };
-  });
-
   return {
     inputAmountTextStyle,
-    inputCaretStyle,
     inputNativeValueStyle,
     outputAmountTextStyle,
-    outputCaretStyle,
     outputNativeValueStyle,
   };
 }

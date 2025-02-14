@@ -5,10 +5,10 @@ import { Bleed, Box, Text, TextShadow, globalColors, useBackgroundColor, useColo
 import * as i18n from '@/languages';
 import { ListHeader, ListPanel, Panel, TapToDismiss, controlPanelStyles } from '@/components/SmoothPager/ListPanel';
 import { ChainImage } from '@/components/coin-icon/ChainImage';
-import { ChainId, ChainNameDisplay } from '@/__swaps__/types/chains';
-import ethereumUtils, { getNetworkFromChainId, useNativeAssetForNetwork } from '@/utils/ethereumUtils';
-import { useAccountAccentColor, useAccountProfile, useAccountSettings } from '@/hooks';
-import { safeAreaInsetValues } from '@/utils';
+import { ChainId } from '@/state/backendNetworks/types';
+import ethereumUtils, { useNativeAsset } from '@/utils/ethereumUtils';
+import { useAccountAccentColor, useAccountProfile, useAccountSettings, useWallets } from '@/hooks';
+import { safeAreaInsetValues, watchingAlert } from '@/utils';
 import { NanoXDeviceAnimation } from '@/screens/hardware-wallets/components/NanoXDeviceAnimation';
 import { EthRewardsCoinIcon } from '../content/PointsContent';
 import { View } from 'react-native';
@@ -17,7 +17,6 @@ import { PointsErrorType } from '@/graphql/__generated__/metadata';
 import { useMutation } from '@tanstack/react-query';
 import { invalidatePointsQuery, usePoints } from '@/resources/points';
 import { convertAmountAndPriceToNativeDisplay, convertRawAmountToBalance } from '@/helpers/utilities';
-import { Network } from '@/helpers';
 import { ButtonPressAnimation } from '@/components/animations';
 import { DEVICE_WIDTH } from '@/utils/deviceUtils';
 import { TIMING_CONFIGS } from '@/components/animations/animationConfigs';
@@ -27,15 +26,15 @@ import { useNavigation } from '@/navigation';
 import { RapSwapActionParameters } from '@/raps/references';
 import { walletExecuteRap } from '@/raps/execute';
 import { ParsedAsset } from '@/__swaps__/types/assets';
-import { chainNameFromChainId } from '@/__swaps__/utils/chains';
 import { loadWallet } from '@/model/wallet';
-import { getProviderForNetwork } from '@/handlers/web3';
+import { getProvider } from '@/handlers/web3';
 import { LegacyTransactionGasParamAmounts, TransactionGasParamAmounts } from '@/entities';
 import { getGasSettingsBySpeed } from '@/__swaps__/screens/Swap/hooks/useSelectedGas';
 import { useMeteorologySuggestions } from '@/__swaps__/utils/meteorology';
 import { AnimatedSpinner } from '@/components/animations/AnimatedSpinner';
 import { RainbowError, logger } from '@/logger';
 import { RewardsActionButton } from '../components/RewardsActionButton';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 type ClaimStatus = 'idle' | 'claiming' | 'success' | PointsErrorType | 'error' | 'bridge-error';
 type ClaimNetwork = '10' | '8453' | '7777777';
@@ -93,8 +92,8 @@ export const ClaimRewardsPanel = () => {
 
 const NETWORK_LIST_ITEMS = CLAIM_NETWORKS.map(chainId => {
   return {
-    IconComponent: <ChainImage chain={getNetworkFromChainId(chainId)} size={36} />,
-    label: ChainNameDisplay[chainId],
+    IconComponent: <ChainImage chainId={chainId} size={36} />,
+    label: useBackendNetworksStore.getState().getChainsLabel()[chainId],
     uniqueId: chainId.toString(),
     selected: false,
   };
@@ -169,6 +168,7 @@ const ClaimingRewards = ({
   setClaimStatus: React.Dispatch<React.SetStateAction<ClaimStatus>>;
 }) => {
   const { accountAddress: address, accountImage, accountColor, accountSymbol } = useAccountProfile();
+  const { isReadOnlyWallet } = useWallets();
   const { nativeCurrency: currency } = useAccountSettings();
   const { highContrastAccentColor } = useAccountAccentColor();
   const { isDarkMode } = useColorMode();
@@ -188,7 +188,7 @@ const ClaimingRewards = ({
     decimals: 18,
     symbol: 'ETH',
   });
-  const eth = useNativeAssetForNetwork(Network.mainnet);
+  const eth = useNativeAsset({ chainId: ChainId.mainnet });
   const unclaimedRewardsNativeCurrency = convertAmountAndPriceToNativeDisplay(
     claimableBalance.amount,
     eth?.price?.value || 0,
@@ -210,19 +210,20 @@ const ClaimingRewards = ({
     nonce: number | null;
   }>({
     mutationFn: async () => {
+      const chainsName = useBackendNetworksStore.getState().getChainsName();
       // Fetch the native asset from the origin chain
-      const opEth_ = await ethereumUtils.getNativeAssetForNetwork(getNetworkFromChainId(ChainId.optimism));
+      const opEth_ = await ethereumUtils.getNativeAssetForNetwork({ chainId: ChainId.optimism });
       const opEth = {
         ...opEth_,
-        chainName: chainNameFromChainId(ChainId.optimism),
+        chainName: chainsName[ChainId.optimism],
       };
 
       // Fetch the native asset from the destination chain
       let destinationEth_;
       if (chainId === ChainId.base) {
-        destinationEth_ = await ethereumUtils.getNativeAssetForNetwork(getNetworkFromChainId(ChainId.base));
+        destinationEth_ = await ethereumUtils.getNativeAssetForNetwork({ chainId: ChainId.base });
       } else if (chainId === ChainId.zora) {
-        destinationEth_ = await ethereumUtils.getNativeAssetForNetwork(getNetworkFromChainId(ChainId.zora));
+        destinationEth_ = await ethereumUtils.getNativeAssetForNetwork({ chainId: ChainId.zora });
       } else {
         destinationEth_ = opEth;
       }
@@ -230,7 +231,7 @@ const ClaimingRewards = ({
       // Add missing properties to match types
       const destinationEth = {
         ...destinationEth_,
-        chainName: chainNameFromChainId(chainId as ChainId),
+        chainName: chainsName[chainId as ChainId],
       };
 
       const selectedGas = {
@@ -261,8 +262,12 @@ const ClaimingRewards = ({
         gasParams,
       } satisfies RapSwapActionParameters<'claimBridge'>;
 
-      const provider = getProviderForNetwork(Network.optimism);
-      const wallet = await loadWallet(address, false, provider);
+      const provider = getProvider({ chainId: ChainId.optimism });
+      const wallet = await loadWallet({
+        address,
+        showErrorIfNotLoaded: false,
+        provider,
+      });
       if (!wallet) {
         // Biometrics auth failure (retry possible)
         setClaimStatus('error');
@@ -286,7 +291,7 @@ const ClaimingRewards = ({
             setClaimStatus('bridge-error');
           }
 
-          logger.error(new RainbowError('ETH REWARDS CLAIM ERROR'), { message: errorMessage });
+          logger.error(new RainbowError('[ClaimRewardsPanel]: Failed to claim ETH rewards'), { message: errorMessage });
 
           return { nonce: null };
         }
@@ -334,18 +339,19 @@ const ClaimingRewards = ({
   }, [claimStatus]);
 
   const panelTitle = useMemo(() => {
+    const chainsLabel = useBackendNetworksStore.getState().getChainsLabel();
     switch (claimStatus) {
       case 'idle':
         return i18n.t(i18n.l.points.points.claim_on_network, {
-          network: chainId ? ChainNameDisplay[chainId] : '',
+          network: chainId ? chainsLabel[chainId] : '',
         });
       case 'claiming':
         return i18n.t(i18n.l.points.points.claiming_on_network, {
-          network: chainId ? ChainNameDisplay[chainId] : '',
+          network: chainId ? chainsLabel[chainId] : '',
         });
       case 'success':
         return i18n.t(i18n.l.points.points.claimed_on_network, {
-          network: chainId ? ChainNameDisplay[chainId] : '',
+          network: chainId ? chainsLabel[chainId] : '',
         });
       case 'bridge-error':
         return i18n.t(i18n.l.points.points.bridge_error);
@@ -491,7 +497,7 @@ const ClaimingRewards = ({
                   <Box paddingHorizontal="44px">
                     <Text align="center" color="labelQuaternary" size="13pt / 135%" weight="semibold">
                       {i18n.t(i18n.l.points.points.bridge_error_explainer, {
-                        network: chainId ? ChainNameDisplay[chainId] : '',
+                        network: chainId ? useBackendNetworksStore.getState().getChainsLabel()[chainId] : '',
                       })}
                     </Text>
                   </Box>
@@ -509,16 +515,20 @@ const ClaimingRewards = ({
               <Animated.View style={claimButtonStyle}>
                 <ButtonPressAnimation
                   onPress={() => {
-                    if (claimStatus === 'idle' || isClaimError(claimStatus)) {
-                      // Almost impossible to reach here since gas prices load immediately
-                      // but in that case I'm disabling the action temporarily to prevent
-                      // any issues that might arise from the gas prices not being loaded
-                      if (!meteorologyData) return;
+                    if (isReadOnlyWallet) {
+                      watchingAlert();
+                    } else {
+                      if (claimStatus === 'idle' || isClaimError(claimStatus)) {
+                        // Almost impossible to reach here since gas prices load immediately
+                        // but in that case I'm disabling the action temporarily to prevent
+                        // any issues that might arise from the gas prices not being loaded
+                        if (!meteorologyData) return;
 
-                      setClaimStatus('claiming');
-                      claimRewards();
-                    } else if (claimStatus === 'success' || claimStatus === 'bridge-error') {
-                      closeClaimPanel();
+                        setClaimStatus('claiming');
+                        claimRewards();
+                      } else if (claimStatus === 'success' || claimStatus === 'bridge-error') {
+                        closeClaimPanel();
+                      }
                     }
                   }}
                   scaleTo={0.925}

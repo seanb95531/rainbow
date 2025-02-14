@@ -2,7 +2,7 @@
 /* eslint-disable no-async-promise-executor */
 /* eslint-disable no-promise-executor-return */
 import { Signer } from '@ethersproject/abstract-signer';
-
+import { ChainId } from '@/state/backendNetworks/types';
 import { RainbowError, logger } from '@/logger';
 
 import { claim, swap, unlock } from './actions';
@@ -22,8 +22,17 @@ import { createUnlockAndCrosschainSwapRap } from './unlockAndCrosschainSwap';
 import { createClaimAndBridgeRap } from './claimAndBridge';
 import { createUnlockAndSwapRap } from './unlockAndSwap';
 import { GasFeeParamsBySpeed, LegacyGasFeeParamsBySpeed, LegacyTransactionGasParamAmounts, TransactionGasParamAmounts } from '@/entities';
+import { Screens, TimeToSignOperation, performanceTracking } from '@/state/performance/performance';
+import { swapsStore } from '@/state/swaps/swapsStore';
+import { createClaimClaimableRap } from './claimClaimable';
+import { claimClaimable } from './actions/claimClaimable';
 
-export function createSwapRapByType<T extends RapTypes>(type: T, swapParameters: RapSwapActionParameters<T>) {
+const PERF_TRACKING_EXEMPTIONS: RapTypes[] = ['claimBridge', 'claimClaimable'];
+
+export function createSwapRapByType<T extends RapTypes>(
+  type: T,
+  swapParameters: RapSwapActionParameters<T>
+): Promise<{ actions: RapAction<RapActionTypes>[] }> {
   switch (type) {
     case 'claimBridge':
       return createClaimAndBridgeRap(swapParameters as RapSwapActionParameters<'claimBridge'>);
@@ -31,8 +40,10 @@ export function createSwapRapByType<T extends RapTypes>(type: T, swapParameters:
       return createUnlockAndCrosschainSwapRap(swapParameters as RapSwapActionParameters<'crosschainSwap'>);
     case 'swap':
       return createUnlockAndSwapRap(swapParameters as RapSwapActionParameters<'swap'>);
+    case 'claimClaimable':
+      return createClaimClaimableRap(swapParameters as RapSwapActionParameters<'claimClaimable'>);
     default:
-      return { actions: [] };
+      return Promise.resolve({ actions: [] });
   }
 }
 
@@ -48,6 +59,8 @@ function typeAction<T extends RapActionTypes>(type: T, props: ActionProps<T>) {
       return () => claimBridge(props as ActionProps<'claimBridge'>);
     case 'crosschainSwap':
       return () => crosschainSwap(props as ActionProps<'crosschainSwap'>);
+    case 'claimClaimable':
+      return () => claimClaimable(props as ActionProps<'claimClaimable'>);
     default:
       // eslint-disable-next-line react/display-name
       return () => null;
@@ -61,7 +74,6 @@ export async function executeAction<T extends RapActionTypes>({
   index,
   baseNonce,
   rapName,
-  flashbots,
   gasParams,
   gasFeeParamsBySpeed,
 }: {
@@ -71,7 +83,6 @@ export async function executeAction<T extends RapActionTypes>({
   index: number;
   baseNonce?: number;
   rapName: string;
-  flashbots?: boolean;
   gasParams: TransactionGasParamAmounts | LegacyTransactionGasParamAmounts;
   gasFeeParamsBySpeed: GasFeeParamsBySpeed | LegacyGasFeeParamsBySpeed;
 }): Promise<RapActionResponse> {
@@ -81,7 +92,7 @@ export async function executeAction<T extends RapActionTypes>({
       wallet,
       currentRap: rap,
       index,
-      parameters: { ...parameters, flashbots },
+      parameters,
       baseNonce,
       gasParams,
       gasFeeParamsBySpeed,
@@ -89,13 +100,13 @@ export async function executeAction<T extends RapActionTypes>({
     const { nonce, hash } = (await typeAction<T>(type, actionProps)()) as RapActionResult;
     return { baseNonce: nonce, errorMessage: null, hash };
   } catch (error) {
-    logger.error(new RainbowError(`rap: ${rapName} - error execute action`), {
+    logger.error(new RainbowError(`[raps/execute]: ${rapName} - error execute action`), {
       message: (error as Error)?.message,
     });
     if (index === 0) {
-      return { baseNonce: null, errorMessage: String(error) };
+      return { baseNonce: null, errorMessage: error?.toString() ?? null };
     }
-    return { baseNonce: null, errorMessage: null };
+    return { baseNonce: null, errorMessage: error?.toString() ?? null };
   }
 }
 
@@ -106,26 +117,24 @@ function getRapFullName<T extends RapActionTypes>(actions: RapAction<T>[]) {
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-const waitForNodeAck = async (hash: string, provider: Signer['provider']): Promise<void> => {
-  return new Promise(async resolve => {
-    const tx = await provider?.getTransaction(hash);
-    // This means the node is aware of the tx, we're good to go
-    if ((tx && tx.blockNumber === null) || (tx && tx?.blockNumber && tx?.blockNumber > 0)) {
-      resolve();
-    } else {
-      // Wait for 1 second and try again
-      await delay(1000);
-      return waitForNodeAck(hash, provider);
-    }
-  });
-};
+const NODE_ACK_DELAY = 500;
 
 export const walletExecuteRap = async (
   wallet: Signer,
   type: RapTypes,
-  parameters: RapSwapActionParameters<'swap' | 'crosschainSwap' | 'claimBridge'>
+  parameters: RapSwapActionParameters<'swap' | 'crosschainSwap' | 'claimBridge' | 'claimClaimable'>
 ): Promise<{ nonce: number | undefined; errorMessage: string | null }> => {
-  const rap: Rap = await createSwapRapByType(type, parameters);
+  // NOTE: We don't care to track claimBridge raps
+  const rap = PERF_TRACKING_EXEMPTIONS.includes(type)
+    ? await createSwapRapByType(type, parameters)
+    : await performanceTracking.getState().executeFn({
+        fn: createSwapRapByType,
+        screen: Screens.SWAPS,
+        operation: TimeToSignOperation.CreateRap,
+        metadata: {
+          degenMode: swapsStore.getState().degenMode,
+        },
+      })(type, parameters);
 
   const { actions } = rap;
   const rapName = getRapFullName(rap.actions);
@@ -140,16 +149,18 @@ export const walletExecuteRap = async (
       index: 0,
       baseNonce: nonce,
       rapName,
-      flashbots: parameters?.flashbots,
       gasParams: parameters?.gasParams,
       gasFeeParamsBySpeed: parameters?.gasFeeParamsBySpeed,
     };
 
-    const { baseNonce, errorMessage: error, hash } = await executeAction(actionParams);
+    const { baseNonce, errorMessage: error, hash: firstHash } = await executeAction(actionParams);
+    const shouldDelayForNodeAck = parameters.chainId !== ChainId.mainnet;
 
     if (typeof baseNonce === 'number') {
-      actions.length > 1 && hash && (await waitForNodeAck(hash, wallet.provider));
+      let latestHash = firstHash;
       for (let index = 1; index < actions.length; index++) {
+        latestHash && shouldDelayForNodeAck && (await delay(NODE_ACK_DELAY));
+
         const action = actions[index];
         const actionParams = {
           action,
@@ -158,12 +169,15 @@ export const walletExecuteRap = async (
           index,
           baseNonce,
           rapName,
-          flashbots: parameters?.flashbots,
           gasParams: parameters?.gasParams,
           gasFeeParamsBySpeed: parameters?.gasFeeParamsBySpeed,
         };
-        const { hash } = await executeAction(actionParams);
-        hash && (await waitForNodeAck(hash, wallet.provider));
+        const { hash: nextHash, errorMessage: error } = await executeAction(actionParams);
+        // if previous action didn't fail, but the current one did, set the error message
+        if (!errorMessage && error) {
+          errorMessage = error;
+        }
+        latestHash = nextHash;
       }
       nonce = baseNonce + actions.length - 1;
     } else {

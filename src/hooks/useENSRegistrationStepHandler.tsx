@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import usePrevious from './usePrevious';
 import { useENSRegistration, useInterval } from '.';
 import { RegistrationParameters } from '@/entities';
-import { getProviderForNetwork, isHardHat, web3Provider } from '@/handlers/web3';
+import { getProvider } from '@/handlers/web3';
 import {
   ENS_SECONDS_PADDING,
   ENS_SECONDS_WAIT,
@@ -14,18 +14,20 @@ import {
   REGISTRATION_STEPS,
 } from '@/helpers/ens';
 import { updateTransactionRegistrationParameters } from '@/redux/ensRegistration';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useConnectedToAnvilStore } from '@/state/connectedToAnvil';
 
 const checkRegisterBlockTimestamp = async ({
   registrationParameters,
   secondsSinceCommitConfirmed,
-  isTestingHardhat,
+  connectedToAnvil,
 }: {
   registrationParameters: RegistrationParameters;
   secondsSinceCommitConfirmed: number;
-  isTestingHardhat: boolean;
+  connectedToAnvil: boolean;
 }) => {
   try {
-    const provider = getProviderForNetwork();
+    const provider = getProvider({ chainId: ChainId.mainnet });
     const block = await provider.getBlock('latest');
     const msBlockTimestamp = getBlockMsTimestamp(block);
     const secs = differenceInSeconds(msBlockTimestamp, registrationParameters?.commitTransactionConfirmedAt || msBlockTimestamp);
@@ -33,7 +35,7 @@ const checkRegisterBlockTimestamp = async ({
       (secs > ENS_SECONDS_WAIT_WITH_PADDING && secondsSinceCommitConfirmed > ENS_SECONDS_WAIT_WITH_PADDING) ||
       // sometimes the provider.getBlock('latest) takes a long time to update to newest block
       secondsSinceCommitConfirmed > ENS_SECONDS_WAIT_PROVIDER_PADDING ||
-      isTestingHardhat
+      connectedToAnvil
     ) {
       return true;
     }
@@ -60,12 +62,12 @@ export default function useENSRegistrationStepHandler(observer = true) {
       -1
   );
 
-  const isTestingHardhat = useMemo(() => isHardHat(web3Provider.connection.url), []);
+  const connectedToAnvil = useConnectedToAnvilStore(state => state.connectedToAnvil);
 
   const [readyToRegister, setReadyToRegister] = useState<boolean>(secondsSinceCommitConfirmed > ENS_SECONDS_WAIT);
 
   // flag to wait 10 secs before we get the tx block, to be able to simulate not confirmed tx when testing
-  const shouldLoopForConfirmation = useRef(isTestingHardhat);
+  const shouldLoopForConfirmation = useRef(connectedToAnvil);
 
   const registrationStep = useMemo(() => {
     if (mode === REGISTRATION_MODES.EDIT) return REGISTRATION_STEPS.EDIT;
@@ -90,7 +92,7 @@ export default function useENSRegistrationStepHandler(observer = true) {
 
   const watchCommitTransaction = useCallback(async () => {
     if (observer) return;
-    const provider = getProviderForNetwork();
+    const provider = getProvider({ chainId: ChainId.mainnet });
     let confirmed = false;
     const tx = await provider.getTransaction(commitTransactionHash || '');
     if (!tx?.blockHash) return confirmed;
@@ -98,8 +100,8 @@ export default function useENSRegistrationStepHandler(observer = true) {
     if (!shouldLoopForConfirmation.current && block?.timestamp) {
       const now = Date.now();
       const msBlockTimestamp = getBlockMsTimestamp(block);
-      // hardhat block timestamp is behind
-      const timeDifference = isTestingHardhat ? now - msBlockTimestamp : 0;
+      // anvil block timestamp is behind
+      const timeDifference = connectedToAnvil ? now - msBlockTimestamp : 0;
       const commitTransactionConfirmedAt = msBlockTimestamp + timeDifference;
       const secs = differenceInSeconds(now, commitTransactionConfirmedAt);
       setSecondsSinceCommitConfirmed(secondsSinceCommitConfirmed < 0 ? 0 : secs);
@@ -113,7 +115,7 @@ export default function useENSRegistrationStepHandler(observer = true) {
       shouldLoopForConfirmation.current = false;
     }
     return confirmed;
-  }, [observer, commitTransactionHash, isTestingHardhat, secondsSinceCommitConfirmed, dispatch]);
+  }, [observer, commitTransactionHash, connectedToAnvil, secondsSinceCommitConfirmed, dispatch]);
 
   const startPollingWatchCommitTransaction = useCallback(async () => {
     if (observer) return;
@@ -166,7 +168,7 @@ export default function useENSRegistrationStepHandler(observer = true) {
     if (!observer && secondsSinceCommitConfirmed % 2 === 0 && secondsSinceCommitConfirmed >= ENS_SECONDS_WAIT && !readyToRegister) {
       const checkIfReadyToRegister = async () => {
         const readyToRegister = await checkRegisterBlockTimestamp({
-          isTestingHardhat,
+          connectedToAnvil,
           registrationParameters,
           secondsSinceCommitConfirmed,
         });
@@ -174,7 +176,7 @@ export default function useENSRegistrationStepHandler(observer = true) {
       };
       checkIfReadyToRegister();
     }
-  }, [isTestingHardhat, observer, readyToRegister, registrationParameters, secondsSinceCommitConfirmed]);
+  }, [connectedToAnvil, observer, readyToRegister, registrationParameters, secondsSinceCommitConfirmed]);
 
   useEffect(
     () => () => {

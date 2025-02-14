@@ -1,11 +1,6 @@
 import React from 'react';
 import isEqual from 'react-fast-compare';
 import { Text as RNText, StyleSheet, View } from 'react-native';
-import {
-  // @ts-ignore
-  IS_TESTING,
-} from 'react-native-dotenv';
-// @ts-ignore
 import RadialGradient from 'react-native-radial-gradient';
 import { ButtonPressAnimation } from '../../../animations';
 import { CoinRowHeight } from '../../../coin-row';
@@ -13,13 +8,14 @@ import { FloatingEmojis } from '../../../floating-emojis';
 import ContextMenuButton from '@/components/native-context-menu/contextMenu';
 import { Text } from '@/design-system';
 import { isNativeAsset } from '@/handlers/assets';
-import { Network } from '@/networks/types';
 import { colors, fonts, fontWithWidth, getFontSize } from '@/styles';
 import { deviceUtils } from '@/utils';
 import RainbowCoinIcon from '@/components/coin-icon/RainbowCoinIcon';
 import { useExternalToken } from '@/resources/assets/externalAssetsQuery';
+import { ChainId } from '@/state/backendNetworks/types';
+import { IS_TEST } from '@/env';
 
-const SafeRadialGradient = (IS_TESTING === 'true' ? View : RadialGradient) as typeof RadialGradient;
+const SafeRadialGradient = (IS_TEST ? View : RadialGradient) as typeof RadialGradient;
 
 interface FastCurrencySelectionRowProps {
   item: any;
@@ -102,15 +98,14 @@ export default React.memo(function FastCurrencySelectionRow({
     address,
     name,
     testID,
-    network,
+    chainId,
     disabled,
   },
 }: FastCurrencySelectionRowProps) {
   const { colors } = theme;
-
-  const { data: item } = useExternalToken({ address, network, currency: nativeCurrency });
-  const rowTestID = `${testID}-exchange-coin-row-${symbol ?? item?.symbol ?? ''}-${network || Network.mainnet}`;
-  const isInfoButtonVisible = !isNativeAsset(address, network) && !showBalance;
+  const { data: item } = useExternalToken({ address, chainId, currency: nativeCurrency });
+  const rowTestID = `${testID}-exchange-coin-row-${symbol ?? item?.symbol ?? ''}-${chainId || ChainId.mainnet}`;
+  const isInfoButtonVisible = !isNativeAsset(address, chainId) && !showBalance;
 
   return (
     <View style={sx.row}>
@@ -124,12 +119,10 @@ export default React.memo(function FastCurrencySelectionRow({
         <View style={sx.rootContainer}>
           <View style={sx.iconContainer}>
             <RainbowCoinIcon
-              size={40}
+              chainId={chainId}
+              color={item?.colors?.primary || item?.colors?.fallback || undefined}
               icon={item?.iconUrl || ''}
-              network={network}
               symbol={item?.symbol || symbol}
-              theme={theme}
-              colors={item?.colors || undefined}
             />
           </View>
           <View style={sx.innerContainer}>
@@ -177,12 +170,10 @@ export default React.memo(function FastCurrencySelectionRow({
         <View style={sx.fav}>
           {isInfoButtonVisible && <Info contextMenuProps={contextMenuProps} showFavoriteButton={showFavoriteButton} theme={theme} />}
           {showFavoriteButton &&
-            network === Network.mainnet &&
+            chainId === ChainId.mainnet &&
             (ios ? (
-              // @ts-ignore
               <FloatingEmojis
                 centerVertically
-                deviceWidth={deviceWidth}
                 disableHorizontalMovement
                 disableVerticalMovement
                 distance={70}

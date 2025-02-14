@@ -1,8 +1,8 @@
 import chroma from 'chroma-js';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { InteractionManager, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
 import Animated, { SharedValue, runOnJS, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
-import { GestureHandlerV1Button } from '@/__swaps__/screens/Swap/components/GestureHandlerV1Button';
+import { GestureHandlerButton } from '@/__swaps__/screens/Swap/components/GestureHandlerButton';
 import { THICK_BORDER_WIDTH } from '@/__swaps__/screens/Swap/constants';
 import { opacity, opacityWorklet } from '@/__swaps__/utils/swaps';
 import { SmoothPager, usePagerNavigation } from '@/components/SmoothPager/SmoothPager';
@@ -30,40 +30,36 @@ import { IS_ANDROID, IS_IOS } from '@/env';
 import { removeFirstEmojiFromString, returnStringFirstEmoji } from '@/helpers/emojiHandler';
 import { useAccountSettings, useInitializeWallet, useWallets, useWalletsWithBalancesAndNames } from '@/hooks';
 import { useSyncSharedValue } from '@/hooks/reanimated/useSyncSharedValue';
-import { Network } from '@/networks/types';
 import { useBrowserStore } from '@/state/browser/browserStore';
 import { colors } from '@/styles';
-import { deviceUtils, watchingAlert } from '@/utils';
-import ethereumUtils from '@/utils/ethereumUtils';
+import { deviceUtils, safeAreaInsetValues, watchingAlert } from '@/utils';
 import { addressHashedEmoji } from '@/utils/profileUtils';
 import { getHighContrastTextColorWorklet } from '@/worklets/colors';
 import { TOP_INSET } from '../Dimensions';
 import { formatUrl } from '../utils';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { toHex } from 'viem';
-import { RainbowNetworks } from '@/networks';
 import * as i18n from '@/languages';
-import { convertAmountToNativeDisplay } from '@/helpers/utilities';
-import { useDispatch, useSelector } from 'react-redux';
-import store, { AppState } from '@/redux/store';
+import { useDispatch } from 'react-redux';
+import store from '@/redux/store';
 import { getDappHost } from '@/utils/connectedApps';
 import WebView from 'react-native-webview';
-import { Navigation, useNavigation } from '@/navigation';
+import { useNavigation } from '@/navigation';
 import Routes from '@/navigation/routesNames';
 import { address } from '@/utils/abbreviations';
 import { fontWithWidthWorklet } from '@/styles/buildTextStyles';
 import { useAppSessionsStore } from '@/state/appSessions';
-import { DEFAULT_TAB_URL, RAINBOW_HOME } from '../constants';
-import { useFavoriteDappsStore } from '@/state/favoriteDapps';
-import { Site } from '@/state/browserHistory';
+import { RAINBOW_HOME } from '../constants';
+import { FavoritedSite, useFavoriteDappsStore } from '@/state/browser/favoriteDappsStore';
 import WalletTypes from '@/helpers/walletTypes';
 import { usePersistentDominantColorFromImage } from '@/hooks/usePersistentDominantColorFromImage';
 import { findWalletWithAccount } from '@/helpers/findWalletWithAccount';
 import { addressSetSelected, walletsSetSelected } from '@/redux/wallets';
-import { getRemoteConfig } from '@/model/remoteConfig';
-import { SWAPS_V2, useExperimentalFlag } from '@/config';
 import { swapsStore } from '@/state/swaps/swapsStore';
 import { userAssetsStore } from '@/state/assets/userAssets';
+import { greaterThan } from '@/helpers/utilities';
+import { ChainId } from '@/state/backendNetworks/types';
+import { useBackendNetworksStore } from '@/state/backendNetworks/backendNetworks';
 
 const PAGES = {
   HOME: 'home',
@@ -88,10 +84,9 @@ export const ControlPanel = () => {
   const {
     params: { activeTabRef },
   } = useRoute<RouteProp<ControlPanelParams, 'ControlPanel'>>();
-  const nativeCurrency = useSelector((state: AppState) => state.settings.nativeCurrency);
   const walletsWithBalancesAndNames = useWalletsWithBalancesAndNames();
   const activeTabUrl = useBrowserStore(state => state.getActiveTabUrl());
-  const activeTabHost = getDappHost(activeTabUrl || '') || DEFAULT_TAB_URL;
+  const activeTabHost = getDappHost(activeTabUrl || '') || RAINBOW_HOME;
   const updateActiveSessionNetwork = useAppSessionsStore(state => state.updateActiveSessionNetwork);
   const updateActiveSession = useAppSessionsStore(state => state.updateActiveSession);
   const addSession = useAppSessionsStore(state => state.addSession);
@@ -103,7 +98,7 @@ export const ControlPanel = () => {
       hostSessions && hostSessions.sessions?.[hostSessions.activeSessionAddress]
         ? {
             address: hostSessions.activeSessionAddress,
-            network: hostSessions.sessions[hostSessions.activeSessionAddress],
+            chainId: hostSessions.sessions[hostSessions.activeSessionAddress],
           }
         : null,
     [hostSessions]
@@ -113,7 +108,7 @@ export const ControlPanel = () => {
   const [currentAddress, setCurrentAddress] = useState<string>(
     currentSession?.address || hostSessions?.activeSessionAddress || accountAddress
   );
-  const [currentNetwork, setCurrentNetwork] = useState<Network>(currentSession?.network || Network.mainnet);
+  const [currentChainId, setCurrentChainId] = useState<ChainId>(currentSession?.chainId || ChainId.mainnet);
 
   // listens to the current active tab and sets the account
   useEffect(() => {
@@ -129,8 +124,8 @@ export const ControlPanel = () => {
         setCurrentAddress(accountAddress);
       }
 
-      if (currentSession?.network) {
-        setCurrentNetwork(currentSession?.network);
+      if (currentSession?.chainId) {
+        setCurrentChainId(currentSession?.chainId);
       }
     }
   }, [accountAddress, activeTabHost, currentSession]);
@@ -140,12 +135,16 @@ export const ControlPanel = () => {
     const bluetoothWallets: ControlPanelMenuItemProps[] = [];
     const readOnlyWallets: ControlPanelMenuItemProps[] = [];
 
-    const accountBalances: Record<string, number> = {};
+    const accountBalances: Record<string, string> = {};
 
     Object.values(walletsWithBalancesAndNames).forEach(wallet => {
-      wallet.addresses
+      (wallet.addresses || [])
         .filter(account => account.visible)
         .forEach(account => {
+          const balanceText = account.balancesMinusHiddenBalances
+            ? account.balancesMinusHiddenBalances
+            : i18n.t(i18n.l.wallet.change_wallet.loading_balance);
+
           const item: ControlPanelMenuItemProps = {
             IconComponent: account.image ? (
               <ListAvatar url={account.image} />
@@ -153,20 +152,14 @@ export const ControlPanel = () => {
               <ListEmojiAvatar address={account.address} color={account.color} label={account.label} />
             ),
             label: removeFirstEmojiFromString(account.label) || address(account.address, 6, 4),
-            secondaryLabel:
-              // eslint-disable-next-line no-nested-ternary
-              wallet.type === WalletTypes.readOnly
-                ? i18n.t(i18n.l.wallet.change_wallet.watching)
-                : account.balance
-                  ? convertAmountToNativeDisplay(account.balance, nativeCurrency)
-                  : i18n.t(i18n.l.wallet.change_wallet.no_balance),
+            secondaryLabel: wallet.type === WalletTypes.readOnly ? i18n.t(i18n.l.wallet.change_wallet.watching) : balanceText,
             uniqueId: account.address,
             color: colors.avatarBackgrounds[account.color],
             imageUrl: account.image || undefined,
             selected: account.address === currentAddress,
           };
 
-          accountBalances[account.address] = Number(account.balance);
+          accountBalances[account.address] = account.balances?.totalBalanceAmount;
 
           if ([WalletTypes.mnemonic, WalletTypes.seed, WalletTypes.privateKey].includes(wallet.type)) {
             sortedWallets.push(item);
@@ -178,38 +171,38 @@ export const ControlPanel = () => {
         });
     });
 
-    sortedWallets.sort((a, b) => accountBalances[b.uniqueId] - accountBalances[a.uniqueId]);
-    bluetoothWallets.sort((a, b) => accountBalances[b.uniqueId] - accountBalances[a.uniqueId]);
+    sortedWallets.sort((a, b) => (greaterThan(accountBalances[b.uniqueId], accountBalances[a.uniqueId]) ? 1 : -1));
+    bluetoothWallets.sort((a, b) => (greaterThan(accountBalances[b.uniqueId], accountBalances[a.uniqueId]) ? 1 : -1));
 
     const sortedItems = [...sortedWallets, ...bluetoothWallets, ...readOnlyWallets];
 
     return sortedItems;
-  }, [walletsWithBalancesAndNames, currentAddress, nativeCurrency]);
+  }, [walletsWithBalancesAndNames, currentAddress]);
 
   const { testnetsEnabled } = store.getState().settings;
 
   const allNetworkItems = useMemo(() => {
-    return RainbowNetworks.filter(
-      ({ networkType, features: { walletconnect } }) => walletconnect && (testnetsEnabled || networkType !== 'testnet')
-    ).map(network => {
-      return {
-        IconComponent: <ChainImage chain={network.value} size={36} />,
-        label: network.name,
-        secondaryLabel: i18n.t(
-          isConnected && network.value === currentNetwork
-            ? i18n.l.dapp_browser.control_panel.connected
-            : i18n.l.dapp_browser.control_panel.not_connected
-        ),
-        uniqueId: network.value,
-        selected: network.value === currentNetwork,
-      };
-    });
-  }, [currentNetwork, isConnected, testnetsEnabled]);
+    return Object.values(useBackendNetworksStore.getState().getDefaultChains())
+      .filter(({ testnet }) => testnetsEnabled || !testnet)
+      .map(chain => {
+        return {
+          IconComponent: <ChainImage chainId={chain.id} position="relative" size={36} />,
+          label: useBackendNetworksStore.getState().getChainsLabel()[chain.id],
+          secondaryLabel: i18n.t(
+            isConnected && chain.id === currentChainId
+              ? i18n.l.dapp_browser.control_panel.connected
+              : i18n.l.dapp_browser.control_panel.not_connected
+          ),
+          uniqueId: String(chain.id),
+          selected: chain.id === currentChainId,
+        };
+      });
+  }, [currentChainId, isConnected, testnetsEnabled]);
 
   const selectedWallet = allWalletItems.find(item => item.selected);
 
-  const animatedAccentColor = useSharedValue(selectedWallet?.color || globalColors.blue10);
-  const selectedNetworkId = useSharedValue(currentNetwork?.toString() || RainbowNetworks[0].value);
+  const animatedAccentColor = useSharedValue<string | undefined>(selectedWallet?.color || globalColors.blue10);
+  const selectedNetworkId = useSharedValue(currentChainId?.toString() || ChainId.mainnet.toString());
   const selectedWalletId = useSharedValue(selectedWallet?.uniqueId || accountAddress);
 
   const handleSwitchWallet = useCallback(
@@ -217,21 +210,21 @@ export const ControlPanel = () => {
       const address = selectedItemId;
       updateActiveSession({ host: activeTabHost, address: address as `0x${string}` });
       if (isConnected) {
-        updateActiveSessionNetwork({ host: activeTabHost, network: currentNetwork });
+        updateActiveSessionNetwork({ host: activeTabHost, chainId: currentChainId });
         // need to emit these events to the dapp
         activeTabRef.current?.injectJavaScript(`window.ethereum.emit('accountsChanged', ['${address}']); true;`);
       }
       setCurrentAddress(address);
     },
-    [activeTabHost, activeTabRef, currentNetwork, isConnected, updateActiveSession, updateActiveSessionNetwork]
+    [activeTabHost, activeTabRef, currentChainId, isConnected, updateActiveSession, updateActiveSessionNetwork]
   );
 
   const handleNetworkSwitch = useCallback(
     (selectedItemId: string) => {
-      updateActiveSessionNetwork({ host: activeTabHost, network: selectedItemId as Network });
-      const chainId = RainbowNetworks.find(({ value }) => value === (selectedItemId as Network))?.id as number;
+      const chainId = Number(selectedItemId) as ChainId;
+      updateActiveSessionNetwork({ host: activeTabHost, chainId });
       activeTabRef.current?.injectJavaScript(`window.ethereum.emit('chainChanged', ${toHex(chainId)}); true;`);
-      setCurrentNetwork(selectedItemId as Network);
+      setCurrentChainId(Number(selectedItemId) as ChainId);
     },
     [activeTabHost, activeTabRef, updateActiveSessionNetwork]
   );
@@ -239,24 +232,22 @@ export const ControlPanel = () => {
   const handleConnect = useCallback(async () => {
     const activeTabHost = getDappHost(activeTabUrl || '');
     const address = selectedWalletId.value;
-    const network = selectedNetworkId.value as Network;
+    const chainId = Number(selectedNetworkId.value);
 
     addSession({
       host: activeTabHost || '',
       address: address as `0x${string}`,
-      network,
+      chainId,
       url: activeTabUrl || '',
     });
-
-    const chainId = ethereumUtils.getChainIdFromNetwork(network);
 
     activeTabRef.current?.injectJavaScript(
       `window.ethereum.emit('accountsChanged', ['${address}']); window.ethereum.emit('connect', { address: '${address}', chainId: '${toHex(chainId)}' }); true;`
     );
     setIsConnected(true);
     setCurrentAddress(address);
-    setCurrentNetwork(network);
-  }, [activeTabUrl, selectedWalletId.value, selectedNetworkId.value, addSession, activeTabRef]);
+    setCurrentChainId(chainId);
+  }, [activeTabUrl, selectedWalletId, selectedNetworkId, addSession, activeTabRef]);
 
   const handleDisconnect = useCallback(() => {
     const activeTabHost = getDappHost(activeTabUrl as string);
@@ -275,14 +266,14 @@ export const ControlPanel = () => {
           <SmoothPager.Page
             component={
               <HomePanel
+                allNetworkItems={allNetworkItems}
                 animatedAccentColor={animatedAccentColor}
                 goToPage={goToPage}
-                selectedNetwork={currentNetwork}
-                selectedWallet={selectedWallet}
-                allNetworkItems={allNetworkItems}
                 isConnected={isConnected}
                 onConnect={handleConnect}
                 onDisconnect={handleDisconnect}
+                selectedChainId={currentChainId}
+                selectedWallet={selectedWallet}
               />
             }
             id={PAGES.HOME}
@@ -294,8 +285,8 @@ export const ControlPanel = () => {
                   allWalletItems={allWalletItems}
                   animatedAccentColor={animatedAccentColor}
                   goBack={goBack}
-                  selectedWalletId={selectedWalletId}
                   onWalletSwitch={handleSwitchWallet}
+                  selectedWalletId={selectedWalletId}
                 />
               }
               id={PAGES.SWITCH_WALLET}
@@ -306,8 +297,8 @@ export const ControlPanel = () => {
                   allNetworkItems={allNetworkItems}
                   animatedAccentColor={animatedAccentColor}
                   goBack={goBack}
-                  selectedNetworkId={selectedNetworkId}
                   onNetworkSwitch={handleNetworkSwitch}
+                  selectedNetworkId={selectedNetworkId}
                 />
               }
               id={PAGES.SWITCH_NETWORK}
@@ -320,7 +311,7 @@ export const ControlPanel = () => {
   );
 };
 
-const TapToDismiss = React.memo(function TapToDismiss() {
+export const TapToDismiss = memo(function TapToDismiss() {
   const { goBack } = useNavigation();
   return (
     <TouchableWithoutFeedback onPress={goBack}>
@@ -365,10 +356,10 @@ const AccentColorSetter = ({
   return null;
 };
 
-const HomePanel = ({
+const HomePanel = memo(function HomePanel({
   animatedAccentColor,
   goToPage,
-  selectedNetwork,
+  selectedChainId,
   selectedWallet,
   allNetworkItems,
   isConnected,
@@ -377,28 +368,26 @@ const HomePanel = ({
 }: {
   animatedAccentColor: SharedValue<string | undefined>;
   goToPage: (pageId: string) => void;
-  selectedNetwork: string;
+  selectedChainId: ChainId;
   selectedWallet: ControlPanelMenuItemProps | undefined;
   allNetworkItems: ControlPanelMenuItemProps[];
   isConnected: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-}) => {
+}) {
   const { accountAddress } = useAccountSettings();
   const { wallets } = useWallets();
   const initializeWallet = useInitializeWallet();
   const dispatch = useDispatch();
   const { navigate } = useNavigation();
 
-  const swapsV2Enabled = useExperimentalFlag(SWAPS_V2);
-
   const actionButtonList = useMemo(() => {
     const walletIcon = selectedWallet?.IconComponent || <></>;
     const walletLabel = selectedWallet?.label || '';
     const walletSecondaryLabel = selectedWallet?.secondaryLabel || '';
 
-    const network = allNetworkItems.find(item => item.uniqueId === selectedNetwork);
-    const networkIcon = <ChainImage chain={(network?.uniqueId as Network) || 'mainnet'} size={36} />;
+    const network = allNetworkItems.find(item => item.uniqueId === String(selectedChainId));
+    const networkIcon = <ChainImage chainId={Number(network?.uniqueId) || ChainId.mainnet} size={36} />;
     const networkLabel = network?.label || '';
     const networkSecondaryLabel = network?.secondaryLabel || '';
 
@@ -424,7 +413,7 @@ const HomePanel = ({
         />
       </Stack>
     );
-  }, [allNetworkItems, animatedAccentColor, goToPage, selectedNetwork, selectedWallet]);
+  }, [allNetworkItems, animatedAccentColor, goToPage, selectedChainId, selectedWallet]);
 
   const runWalletChecksBeforeSwapOrBridge = useCallback(async () => {
     if (!selectedWallet || !wallets) return false;
@@ -452,42 +441,19 @@ const HomePanel = ({
     const valid = await runWalletChecksBeforeSwapOrBridge();
     if (!valid) return;
 
-    const { swaps_v2 } = getRemoteConfig();
-
-    if (swaps_v2 || swapsV2Enabled) {
-      swapsStore.setState({
-        inputAsset: userAssetsStore.getState().getHighestValueAsset(),
-      });
-      InteractionManager.runAfterInteractions(() => {
-        navigate(Routes.SWAP);
-      });
-      return;
-    }
-
-    const mainnetEth = await ethereumUtils.getNativeAssetForNetwork(Network.mainnet, selectedWallet?.uniqueId);
-    Navigation.handleAction(Routes.EXCHANGE_MODAL, {
-      fromDiscover: true,
-      params: {
-        inputAsset: mainnetEth,
-      },
-      screen: Routes.MAIN_EXCHANGE_SCREEN,
-    });
-  }, [runWalletChecksBeforeSwapOrBridge, selectedWallet?.uniqueId]);
+    swapsStore.setState({ inputAsset: userAssetsStore.getState().getHighestValueNativeAsset() });
+    InteractionManager.runAfterInteractions(() => navigate(Routes.SWAP));
+  }, [navigate, runWalletChecksBeforeSwapOrBridge]);
 
   const handleOnPressBridge = useCallback(async () => {
     const valid = await runWalletChecksBeforeSwapOrBridge();
     if (!valid) return;
-    const mainnetEth = await ethereumUtils.getNativeAssetForNetwork(Network.mainnet, selectedWallet?.uniqueId);
-    Navigation.handleAction(Routes.EXCHANGE_MODAL, {
-      fromDiscover: true,
-      params: {
-        inputAsset: mainnetEth,
-      },
-      screen: Routes.MAIN_EXCHANGE_SCREEN,
-    });
-  }, [runWalletChecksBeforeSwapOrBridge, selectedWallet?.uniqueId]);
 
-  const isOnHomepage = useBrowserStore(state => (state.getActiveTabUrl() || DEFAULT_TAB_URL) === RAINBOW_HOME);
+    swapsStore.setState({ inputAsset: userAssetsStore.getState().getHighestValueNativeAsset() });
+    InteractionManager.runAfterInteractions(() => navigate(Routes.SWAP));
+  }, [navigate, runWalletChecksBeforeSwapOrBridge]);
+
+  const isOnHomepage = useBrowserStore(state => (state.getActiveTabUrl() || RAINBOW_HOME) === RAINBOW_HOME);
 
   return (
     <Panel height={isOnHomepage ? HOME_PANEL_FULL_HEIGHT - HOME_PANEL_DAPP_SECTION : HOME_PANEL_FULL_HEIGHT}>
@@ -536,9 +502,9 @@ const HomePanel = ({
       </Box>
     </Panel>
   );
-};
+});
 
-const HomePanelLogo = React.memo(function HomePanelLogo() {
+const HomePanelLogo = memo(function HomePanelLogo() {
   const logoUrl = useBrowserStore(state => state.getActiveTabLogo());
   return (
     <Box
@@ -555,7 +521,7 @@ const HomePanelLogo = React.memo(function HomePanelLogo() {
   );
 });
 
-const HomePanelTitleSection = React.memo(function HomePanelTitleSection() {
+const HomePanelTitleSection = memo(function HomePanelTitleSection() {
   const activeTabUrl = useBrowserStore(state => state.getActiveTabUrl());
   const activeTabTitle = useBrowserStore(state => state.getActiveTabTitle());
   return (
@@ -570,19 +536,19 @@ const HomePanelTitleSection = React.memo(function HomePanelTitleSection() {
   );
 });
 
-const SwitchWalletPanel = ({
+const SwitchWalletPanel = memo(function SwitchWalletPanel({
+  allWalletItems,
   animatedAccentColor,
   goBack,
-  selectedWalletId,
-  allWalletItems,
   onWalletSwitch,
+  selectedWalletId,
 }: {
+  allWalletItems: ControlPanelMenuItemProps[];
   animatedAccentColor: SharedValue<string | undefined>;
   goBack: () => void;
-  selectedWalletId: SharedValue<string>;
-  allWalletItems: ControlPanelMenuItemProps[];
   onWalletSwitch: (selectedItemId: string) => void;
-}) => {
+  selectedWalletId: SharedValue<string>;
+}) {
   const handleOnSelect = useCallback(
     (selectedItemId: string) => {
       onWalletSwitch(selectedItemId);
@@ -596,25 +562,25 @@ const SwitchWalletPanel = ({
       goBack={goBack}
       items={allWalletItems}
       pageTitle={i18n.t(i18n.l.dapp_browser.control_panel.switch_wallet)}
-      selectedItemId={selectedWalletId}
       onSelect={handleOnSelect}
+      selectedItemId={selectedWalletId}
     />
   );
-};
+});
 
-const SwitchNetworkPanel = ({
+const SwitchNetworkPanel = memo(function SwitchNetworkPanel({
+  allNetworkItems,
   animatedAccentColor,
   goBack,
-  selectedNetworkId,
-  allNetworkItems,
   onNetworkSwitch,
+  selectedNetworkId,
 }: {
+  allNetworkItems: ControlPanelMenuItemProps[];
   animatedAccentColor: SharedValue<string | undefined>;
   goBack: () => void;
-  selectedNetworkId: SharedValue<string>;
-  allNetworkItems: ControlPanelMenuItemProps[];
   onNetworkSwitch: (selectedItemId: string) => void;
-}) => {
+  selectedNetworkId: SharedValue<string>;
+}) {
   const handleOnSelect = useCallback(
     (selectedItemId: string) => {
       onNetworkSwitch(selectedItemId);
@@ -632,7 +598,7 @@ const SwitchNetworkPanel = ({
       onSelect={handleOnSelect}
     />
   );
-};
+});
 
 const LIST_SCROLL_INDICATOR_BOTTOM_INSET = { bottom: 42 };
 
@@ -641,15 +607,15 @@ const ListPanel = ({
   goBack,
   items,
   pageTitle,
-  selectedItemId,
   onSelect,
+  selectedItemId,
 }: {
   animatedAccentColor: SharedValue<string | undefined>;
   goBack: () => void;
   items?: ControlPanelMenuItemProps[];
   pageTitle: string;
-  selectedItemId: SharedValue<string>;
   onSelect: (selectedItemId: string) => void;
+  selectedItemId: SharedValue<string>;
 }) => {
   const memoizedItems = useMemo(() => items, [items]);
 
@@ -660,7 +626,17 @@ const ListPanel = ({
         <ScrollView
           contentContainerStyle={controlPanelStyles.listScrollViewContentContainer}
           scrollIndicatorInsets={LIST_SCROLL_INDICATOR_BOTTOM_INSET}
-          style={controlPanelStyles.listScrollView}
+          style={[
+            controlPanelStyles.listScrollView,
+            {
+              height: Math.min(
+                (memoizedItems?.length ?? 0) * 56 +
+                  controlPanelStyles.listScrollViewContentContainer.paddingBottom +
+                  controlPanelStyles.listScrollViewContentContainer.paddingTop,
+                controlPanelStyles.listScrollView.maxHeight
+              ),
+            },
+          ]}
         >
           <Box width="full">
             {memoizedItems?.map(item => (
@@ -680,7 +656,7 @@ const ListPanel = ({
   );
 };
 
-const ListHeader = React.memo(function ListHeader({
+const ListHeader = memo(function ListHeader({
   animatedAccentColor,
   goBack,
   rightComponent,
@@ -703,7 +679,9 @@ const ListHeader = React.memo(function ListHeader({
       <Box style={controlPanelStyles.listHeaderContent}>
         <ButtonPressAnimation onPress={goBack} scaleTo={0.8} style={controlPanelStyles.listHeaderButtonWrapper}>
           <Box alignItems="center" height={{ custom: 20 }} justifyContent="center" width={{ custom: 20 }}>
-            <AnimatedText align="center" size="icon 20px" staticText="􀆉" style={backIconStyle} weight="bold" />
+            <AnimatedText align="center" size="icon 20px" style={backIconStyle} weight="bold">
+              􀆉
+            </AnimatedText>
           </Box>
         </ButtonPressAnimation>
         <Box alignItems="center" justifyContent="center" paddingHorizontal="44px" width="full">
@@ -736,7 +714,7 @@ interface ControlPanelMenuItemProps {
   variant?: 'homePanel';
 }
 
-const ControlPanelMenuItem = React.memo(function ControlPanelMenuItem({
+const ControlPanelMenuItem = memo(function ControlPanelMenuItem({
   IconComponent,
   animatedAccentColor,
   label,
@@ -757,19 +735,14 @@ const ControlPanelMenuItem = React.memo(function ControlPanelMenuItem({
       selectedItemId.value = uniqueId;
     }
 
-    // const walletColor = PLACEHOLDER_WALLET_ITEMS.find(item => item.uniqueId === uniqueId)?.color;
-    // if (walletColor && animatedAccentColor) {
-    //   animatedAccentColor.value = withTiming(walletColor, TIMING_CONFIGS.slowFadeConfig);
-    // }
-
     onPress?.();
-  }, [/* animatedAccentColor, */ onPress, selectedItemId, uniqueId]);
+  }, [onPress, selectedItemId, uniqueId]);
 
   const selectedStyle = useAnimatedStyle(() => {
     const selected = selectedItemId?.value === uniqueId || variant === 'homePanel';
     return {
       // eslint-disable-next-line no-nested-ternary
-      backgroundColor: selected ? (isDarkMode ? globalColors.white10 : '#FBFCFD') : 'transparent',
+      backgroundColor: selected ? (isDarkMode ? globalColors.white10 : '#F7F7F9') : 'transparent',
       borderColor: selected ? borderColor : 'transparent',
       borderWidth: !selected || IS_ANDROID ? 0 : THICK_BORDER_WIDTH,
       paddingLeft: !selected || IS_ANDROID ? 10 : 10 - THICK_BORDER_WIDTH,
@@ -794,7 +767,9 @@ const ControlPanelMenuItem = React.memo(function ControlPanelMenuItem({
             <Box style={controlPanelStyles.menuItemIconContainer}>{IconComponent}</Box>
           </Column>
           <Stack space="10px">
-            <AnimatedText numberOfLines={1} size="17pt" staticText={label} style={selectedTextStyle} />
+            <AnimatedText numberOfLines={1} size="17pt" style={selectedTextStyle}>
+              {label}
+            </AnimatedText>
             {secondaryLabel && (
               <Text
                 color={secondaryLabelColor || (variant === 'homePanel' ? 'labelTertiary' : 'labelQuaternary')}
@@ -809,7 +784,9 @@ const ControlPanelMenuItem = React.memo(function ControlPanelMenuItem({
           {variant === 'homePanel' && (
             <Column width="content">
               <Box alignItems="center" height={{ custom: 24 }} justifyContent="center" width={{ custom: 24 }}>
-                <AnimatedText align="center" size="icon 17px" staticText="􀆊" style={selectedTextStyle} weight="heavy" />
+                <AnimatedText align="center" size="icon 17px" style={selectedTextStyle} weight="heavy">
+                  􀆊
+                </AnimatedText>
               </Box>
             </Column>
           )}
@@ -819,13 +796,13 @@ const ControlPanelMenuItem = React.memo(function ControlPanelMenuItem({
   );
 });
 
-const ListAvatar = React.memo(function ListAvatar({ size = 36, url }: { size?: number; url: string }) {
+const ListAvatar = memo(function ListAvatar({ size = 36, url }: { size?: number; url: string }) {
   return (
     <ImgixImage enableFasterImage size={size ?? 36} source={{ uri: url }} style={{ borderRadius: size / 2, height: size, width: size }} />
   );
 });
 
-const ListEmojiAvatar = React.memo(function ListEmojiAvatar({
+const ListEmojiAvatar = memo(function ListEmojiAvatar({
   address,
   color,
   label,
@@ -863,7 +840,7 @@ const ListEmojiAvatar = React.memo(function ListEmojiAvatar({
   );
 });
 
-const ControlPanelButton = React.memo(function ControlPanelButton({
+const ControlPanelButton = memo(function ControlPanelButton({
   animatedAccentColor,
   icon,
   label,
@@ -882,7 +859,9 @@ const ControlPanelButton = React.memo(function ControlPanelButton({
       <HitSlop horizontal="16px" vertical="10px">
         <Stack alignHorizontal="center" space="10px">
           <Box as={Animated.View} background="accent" style={[controlPanelStyles.button, backgroundColor]}>
-            <AnimatedText align="center" color="label" size="icon 20px" staticText={icon} style={buttonTextColor} weight="heavy" />
+            <AnimatedText align="center" color="label" size="icon 20px" style={buttonTextColor} weight="heavy">
+              {icon}
+            </AnimatedText>
           </Box>
           <Bleed horizontal="20px">
             <Text align="center" color="labelQuaternary" numberOfLines={1} size="12pt" weight="bold">
@@ -895,7 +874,7 @@ const ControlPanelButton = React.memo(function ControlPanelButton({
   );
 });
 
-const FavoriteButton = React.memo(function FavButton({ animatedAccentColor }: { animatedAccentColor: SharedValue<string | undefined> }) {
+const FavoriteButton = memo(function FavButton({ animatedAccentColor }: { animatedAccentColor: SharedValue<string | undefined> }) {
   const tabId = useBrowserStore(state => state.getActiveTabId());
   const tabData = useBrowserStore(state => state.getTabData(tabId));
   const isFavorite = useFavoriteDappsStore(state => state.isFavorite(tabData?.url || ''));
@@ -906,7 +885,7 @@ const FavoriteButton = React.memo(function FavButton({ animatedAccentColor }: { 
     if (isFavorite) {
       removeFavorite(tabData?.url || '');
     } else {
-      const site: Omit<Site, 'timestamp'> = {
+      const site: FavoritedSite = {
         name: tabData?.title || '',
         url: tabData?.url || '',
         image: tabData?.logoUrl || '',
@@ -925,7 +904,7 @@ const FavoriteButton = React.memo(function FavButton({ animatedAccentColor }: { 
   );
 });
 
-const DisabledControlPanelButton = React.memo(function ControlPanelButton({ icon, label }: { icon: string; label: string }) {
+const DisabledControlPanelButton = memo(function ControlPanelButton({ icon, label }: { icon: string; label: string }) {
   const { isDarkMode } = useColorMode();
 
   const disabledColor = opacity(isDarkMode ? globalColors.white80 : globalColors.grey80, 1);
@@ -957,7 +936,7 @@ const DisabledControlPanelButton = React.memo(function ControlPanelButton({ icon
   );
 });
 
-const ConnectButton = React.memo(function ControlPanelButton({
+const ConnectButton = memo(function ControlPanelButton({
   isConnected,
   onConnect,
   onDisconnect,
@@ -975,7 +954,7 @@ const ConnectButton = React.memo(function ControlPanelButton({
     return withTiming(isConnected ? red : green, TIMING_CONFIGS.slowerFadeConfig);
   });
 
-  const buttonIcon = useDerivedValue(() => {
+  const buttonIcon = useDerivedValue<string>(() => {
     return isConnected ? '􀋪' : '􀋦';
   });
 
@@ -1012,30 +991,37 @@ const ConnectButton = React.memo(function ControlPanelButton({
   }, [isConnected, onConnect, onDisconnect]);
 
   return (
-    <GestureHandlerV1Button
-      buttonPressWrapperStyleIOS={controlPanelStyles.connectButtonContainer}
-      onPressWorklet={handlePress}
-      pointerEvents="auto"
-      scaleTo={0.82}
-      style={[controlPanelStyles.buttonContainer]}
-    >
-      <Box paddingHorizontal={IS_IOS ? '16px' : undefined} paddingVertical={IS_IOS ? '10px' : undefined}>
-        <Stack alignHorizontal="center" space="10px">
-          <Box as={Animated.View} style={[controlPanelStyles.button, controlPanelStyles.connectButton, buttonBackground]}>
-            <Bleed space="16px">
-              <AnimatedText align="center" size="icon 20px" style={[buttonIconStyle, controlPanelStyles.connectButtonIcon]} weight="heavy">
-                {buttonIcon}
+    <View style={controlPanelStyles.connectButtonContainer}>
+      <GestureHandlerButton
+        hapticTrigger="tap-end"
+        onPressWorklet={handlePress}
+        pointerEvents="auto"
+        scaleTo={0.82}
+        style={[controlPanelStyles.buttonContainer]}
+      >
+        <Box paddingHorizontal={IS_IOS ? '16px' : undefined} paddingVertical={IS_IOS ? '10px' : undefined}>
+          <Stack alignHorizontal="center" space="10px">
+            <Box as={Animated.View} style={[controlPanelStyles.button, controlPanelStyles.connectButton, buttonBackground]}>
+              <Bleed space="16px">
+                <AnimatedText
+                  align="center"
+                  size="icon 20px"
+                  style={[buttonIconStyle, controlPanelStyles.connectButtonIcon]}
+                  weight="heavy"
+                >
+                  {buttonIcon}
+                </AnimatedText>
+              </Bleed>
+            </Box>
+            <Bleed horizontal="20px">
+              <AnimatedText align="center" color="labelQuaternary" numberOfLines={1} size="12pt" weight="bold">
+                {buttonLabel}
               </AnimatedText>
             </Bleed>
-          </Box>
-          <Bleed horizontal="20px">
-            <AnimatedText align="center" color="labelQuaternary" numberOfLines={1} size="12pt" weight="bold">
-              {buttonLabel}
-            </AnimatedText>
-          </Bleed>
-        </Stack>
-      </Box>
-    </GestureHandlerV1Button>
+          </Stack>
+        </Box>
+      </GestureHandlerButton>
+    </View>
   );
 });
 
@@ -1186,10 +1172,10 @@ const controlPanelStyles = StyleSheet.create({
     backgroundColor: globalColors.white10,
   },
   menuItemSelectedLight: {
-    backgroundColor: '#FBFCFD',
+    backgroundColor: '#F7F7F9',
   },
   panelContainer: {
-    bottom: 91,
+    bottom: Math.max(safeAreaInsetValues.bottom + 5, IS_IOS ? 8 : 30),
     pointerEvents: 'box-none',
     position: 'absolute',
     zIndex: 30000,

@@ -1,8 +1,8 @@
 import React, { useCallback, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { CoinIconIndicator } from '../../../../components/coin-icon';
-import { Icon } from '../../../../components/icons';
-import { ButtonPressAnimation } from '../../../animations';
+import { CoinIconIndicator } from '@/components/coin-icon';
+import { Icon } from '@/components/icons';
+import { ButtonPressAnimation } from '@/components/animations';
 
 import { ExtendedState } from '../core/RawRecyclerList';
 
@@ -11,6 +11,8 @@ import { useAccountAsset, useCoinListFinishEditingOptions } from '@/hooks';
 import Routes from '@/navigation/routesNames';
 import { borders, colors, padding, shadow } from '@/styles';
 import RainbowCoinIcon from '@/components/coin-icon/RainbowCoinIcon';
+import { NativeCurrencyKey } from '@/entities';
+import { ChainId } from '@/state/backendNetworks/types';
 
 interface CoinCheckButtonProps {
   isHidden: boolean;
@@ -54,7 +56,7 @@ const formatPercentageString = (percentString?: string) => (percentString ? perc
 
 interface MemoizedBalanceCoinRowProps {
   uniqueId: string;
-  nativeCurrency: string;
+  nativeCurrency: NativeCurrencyKey;
   theme: any;
   navigate: any;
   nativeCurrencySymbol: string;
@@ -64,22 +66,18 @@ interface MemoizedBalanceCoinRowProps {
 
 const MemoizedBalanceCoinRow = React.memo(
   ({ uniqueId, nativeCurrency, theme, navigate, nativeCurrencySymbol, isHidden, maybeCallback }: MemoizedBalanceCoinRowProps) => {
-    const item = useAccountAsset(uniqueId, nativeCurrency) as any;
+    const item = useAccountAsset(uniqueId, nativeCurrency);
 
     const handlePress = useCallback(() => {
       if (maybeCallback.current) {
         maybeCallback.current();
       } else {
-        navigate(Routes.EXPANDED_ASSET_SHEET, {
-          asset: item,
-          fromDiscover: true,
-          isFromWalletScreen: true,
-          type: 'token',
-        });
+        if (!item) return;
+        navigate(Routes.EXPANDED_ASSET_SHEET_V2, { asset: item, address: item.address, chainId: item.chainId });
       }
     }, [navigate, item, maybeCallback]);
 
-    const percentChange = item?.native?.change;
+    const percentChange = item?.native?.change || undefined;
     const percentageChangeDisplay = formatPercentageString(percentChange);
 
     const isPositive = percentChange && percentageChangeDisplay.charAt(0) !== '-';
@@ -90,18 +88,18 @@ const MemoizedBalanceCoinRow = React.memo(
 
     const valueColor = nativeDisplay ? theme.colors.dark : theme.colors.blueGreyLight;
 
+    const chainId = item?.chainId || ChainId.mainnet;
+
     return (
-      <View style={sx.flex}>
+      <View style={sx.flex} testID={'fast-coin-info'}>
         <ButtonPressAnimation onPress={handlePress} scaleTo={0.96} testID={`balance-coin-row-${item?.name}`}>
           <View style={[sx.container]}>
             <View style={sx.iconContainer}>
               <RainbowCoinIcon
-                size={40}
                 icon={item?.icon_url}
-                network={item?.network}
-                symbol={item?.symbol}
-                theme={theme}
-                colors={item?.colors}
+                chainId={chainId}
+                symbol={item?.symbol || ''}
+                color={item?.colors?.primary || item?.colors?.fallback || undefined}
               />
             </View>
 
@@ -140,7 +138,7 @@ const MemoizedBalanceCoinRow = React.memo(
 MemoizedBalanceCoinRow.displayName = 'MemoizedBalanceCoinRow';
 
 export default React.memo(function BalanceCoinRow({ uniqueId, extendedState }: { uniqueId: string; extendedState: ExtendedState }) {
-  const { theme, nativeCurrencySymbol, navigate, nativeCurrency, hiddenCoins, pinnedCoins, toggleSelectedCoin, isCoinListEdited } =
+  const { theme, nativeCurrencySymbol, navigate, nativeCurrency, hiddenAssets, pinnedCoins, toggleSelectedCoin, isCoinListEdited } =
     extendedState;
 
   const onPress = useCallback(() => {
@@ -152,7 +150,7 @@ export default React.memo(function BalanceCoinRow({ uniqueId, extendedState }: {
   const maybeCallback = useRef<null | (() => void)>(null);
   maybeCallback.current = isCoinListEdited ? onPress : null;
 
-  const isHidden = hiddenCoins[uniqueId];
+  const isHidden = hiddenAssets.has(uniqueId);
   const isPinned = pinnedCoins[uniqueId];
 
   return (

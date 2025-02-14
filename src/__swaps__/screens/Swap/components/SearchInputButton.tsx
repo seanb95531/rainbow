@@ -1,13 +1,16 @@
 import React, { useCallback } from 'react';
-import { GestureHandlerV1Button } from './GestureHandlerV1Button';
+import { GestureHandlerButton } from './GestureHandlerButton';
 import { AnimatedText, Box } from '@/design-system';
-import Animated, { SharedValue, runOnJS, useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
+import Animated, { SharedValue, runOnJS, useAnimatedStyle, useDerivedValue, withTiming } from 'react-native-reanimated';
+import { triggerHaptics } from 'react-native-turbo-haptics';
 import { NavigationSteps, useSwapContext } from '@/__swaps__/screens/Swap/providers/swap-provider';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useSwapsStore } from '@/state/swaps/swapsStore';
 import * as i18n from '@/languages';
 import { THICK_BORDER_WIDTH } from '../constants';
 import { useClipboard } from '@/hooks';
+import { TIMING_CONFIGS } from '@/components/animations/animationConfigs';
+import { IS_ANDROID } from '@/env';
 
 const CANCEL_LABEL = i18n.t(i18n.l.button.cancel);
 const CLOSE_LABEL = i18n.t(i18n.l.button.close);
@@ -33,6 +36,7 @@ export const SearchInputButton = ({
     outputSearchRef,
     AnimatedSwapStyles,
   } = useSwapContext();
+
   const { hasClipboardData } = useClipboard();
 
   const btnText = useDerivedValue(() => {
@@ -52,42 +56,53 @@ export const SearchInputButton = ({
 
   const onPaste = useCallback(() => {
     Clipboard.getString().then(text => {
-      // to prevent users from mistakingly pasting long ass texts when copying the wrong thing
-      // we slice the string to 42 which is the size of a eth address,
-      // no token name query search should be that big anyway
+      // Slice the pasted text to the length of an ETH address
       const v = text.trim().slice(0, 42);
       pastedSearchInputValue.value = v;
       useSwapsStore.setState({ outputSearchQuery: v });
     });
-  }, []);
+  }, [pastedSearchInputValue]);
 
-  const buttonVisibilityStyle = useAnimatedStyle(() => {
+  const buttonInfo = useDerivedValue(() => {
     const isInputSearchFocused = inputProgress.value === NavigationSteps.SEARCH_FOCUSED;
     const isOutputSearchFocused = outputProgress.value === NavigationSteps.SEARCH_FOCUSED;
+    const isOutputTokenListFocused = outputProgress.value === NavigationSteps.TOKEN_LIST_FOCUSED;
 
-    const isVisible =
-      isInputSearchFocused ||
-      isOutputSearchFocused ||
-      (output && (internalSelectedOutputAsset.value || hasClipboardData)) ||
-      (!output && internalSelectedInputAsset.value);
+    const clipboardDataAvailable = hasClipboardData || IS_ANDROID;
+
+    const isPasteDisabled = output && !internalSelectedOutputAsset.value && isOutputTokenListFocused && !clipboardDataAvailable;
+    const isVisible = isInputSearchFocused || isOutputSearchFocused || output || (!output && !!internalSelectedInputAsset.value);
+    const visibleOpacity = isPasteDisabled ? 0.4 : 1;
 
     return {
-      display: isVisible ? 'flex' : 'none',
-      opacity: isVisible ? 1 : 0,
-      pointerEvents: isVisible ? 'auto' : 'none',
+      isPasteDisabled,
+      isVisible,
+      visibleOpacity,
+    };
+  });
+
+  const buttonVisibilityStyle = useAnimatedStyle(() => {
+    return {
+      display: buttonInfo.value.isVisible ? 'flex' : 'none',
+      opacity: buttonInfo.value.isVisible ? withTiming(buttonInfo.value.visibleOpacity, TIMING_CONFIGS.tabPressConfig) : 0,
+      pointerEvents: buttonInfo.value.isVisible ? 'auto' : 'none',
     };
   });
 
   return (
     <Animated.View style={buttonVisibilityStyle}>
-      <GestureHandlerV1Button
+      <GestureHandlerButton
         onPressJS={() => {
           (output ? outputSearchRef : inputSearchRef).current?.blur();
         }}
         onPressWorklet={() => {
           'worklet';
           if (output && outputProgress.value === NavigationSteps.TOKEN_LIST_FOCUSED && !internalSelectedOutputAsset.value) {
-            runOnJS(onPaste)();
+            if (buttonInfo.value.isPasteDisabled) {
+              triggerHaptics('notificationError');
+            } else {
+              runOnJS(onPaste)();
+            }
           }
 
           if (isSearchFocused.value || (output && internalSelectedOutputAsset.value) || (!output && internalSelectedInputAsset.value)) {
@@ -121,7 +136,7 @@ export const SearchInputButton = ({
             {btnText}
           </AnimatedText>
         </Box>
-      </GestureHandlerV1Button>
+      </GestureHandlerButton>
     </Animated.View>
   );
 };
